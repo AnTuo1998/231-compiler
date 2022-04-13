@@ -62,14 +62,9 @@ describe('run(source, config) function', () => {
         expect(importObject.output).to.equal("2\n");
     });
 
-    it('expression', async () => {
+    it('parenthesis expression', async () => {
         await runTest("x:int = 0\nx=(2 + 3) * (5 + 10 // 4)\nprint(x)");
         expect(importObject.output).to.equal("35\n");
-    });
-
-    it('expression', async () => {
-        var result = await runTest("(2 + 3");
-        expect(result).to.equal(5);
     });
 });
 
