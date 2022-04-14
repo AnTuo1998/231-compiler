@@ -33,7 +33,8 @@ export function tcExpr(e: Expr<any>, functions: FunctionsEnv,
             return { ...e, a: "int", lhs: nLHS, rhs: nRHS };
           }
           else {
-            throw new TypeError(`Cannot apply operator '${e.op}' on types '${nLHS.a}' and '${nRHS.a}'`);
+            throw new TypeError(`Cannot apply operator '${e.op}' ` +
+              `on types '${nLHS.a}' and '${nRHS.a}'`);
           }
         case ">":
         case "<":
