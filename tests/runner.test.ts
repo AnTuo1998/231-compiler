@@ -22,7 +22,16 @@ const importObject = {
         },
         print_none: (arg: any) => {
             importObject.output += "None\n";
-        }
+        },
+        ObjInit: (arg: any) => {
+            if (arg === 0)
+                throw new Error("RUNTIME ERROR: object not intialized");
+            return arg;
+        },
+        abs: Math.abs,
+        min: Math.min,
+        max: Math.max,
+        pow: Math.pow,
     },
 
     output: ""
@@ -130,7 +139,7 @@ describe('test operations', () => {
             `);
             expect(true).to.equal(false);
         } catch (error) {
-            expect(error.message).to.equal(`Expect type 'int'; got type 'bool'`);
+            expect(error.message).to.equal(`TYPE ERROR: Expect type 'int'; got type 'bool'`);
         }
     });
 
@@ -212,7 +221,7 @@ describe('test control flow', () => {
             `);
             expect(true).to.equal(false);
         } catch (error) {
-            expect(error.message).to.equal("All path in this function/method " +
+            expect(error.message).to.equal("TYPE ERROR: All path in this function/method " +
                 "must have a return statement: f");
         }
 
@@ -226,7 +235,7 @@ describe('test control flow', () => {
             `);
             expect(true).to.equal(false);
         } catch (error) {
-            expect(error.message).to.equal("All path in this function/method " +
+            expect(error.message).to.equal("TYPE ERROR: All path in this function/method " +
                 "must have a return statement: f");
         }
     });
@@ -632,8 +641,6 @@ describe('test classes', () => {
         `);
         expect(importObject.output).to.equal("99\n");
     });
-
-
 
 
     // it('prints a unary operation 3', async () => {
