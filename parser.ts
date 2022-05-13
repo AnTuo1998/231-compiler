@@ -1,164 +1,520 @@
-import {parser} from "lezer-python";
-import {TreeCursor} from "lezer-tree";
-import {BinOp, Expr, Stmt, UnOp} from "./ast";
-import { ParseError } from "./error";
+import { TreeCursor } from '@lezer/common';
+import { parser } from '@lezer/python';
+import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, isCls } from './ast';
+import { FunDef, Program, Literal, LValue, ClsDef } from './ast';
+import { ParseError } from './error';
 
-export function traverseArgs(c: TreeCursor, s: string): Array<Expr> {
-  // c is the subtree of the arglist
-  const args = [];
-  c.firstChild(); // (
-  // c.nextSibling(); // the first arg
-  // do {
-  //   if (c.type.name !== ",") {
-  //     args.push(traverseExpr(c, s));
-  //   }
-  //   c.nextSibling();
-  // } while (c.type.name !== ")")
-  while (c.nextSibling()) {
-    // better logic to skip (,)
-    args.push(traverseExpr(c, s));
-    c.nextSibling();
+function isDecl(t: TreeCursor, s: string) {
+  if (t.type.name === "FunctionDefinition" || t.type.name === "ClassDefinition") {
+    return t.type.name;
   }
-  c.parent();
-  return args;
+  else if (t.type.name === "AssignStatement") {
+    t.firstChild();
+    t.nextSibling();
+    const name = t.type.name;
+    t.parent();
+    // @ts-ignore
+    if (name !== "TypeDef")
+      return false;
+    return t.type.name;
+  }
+  return false;
 }
 
+export function parseProgram(source: string): Program<any> {
+  const t = parser.parse(source).cursor();
+  var vardefs: VarDef<any>[] = [];
+  var fundefs: FunDef<any>[] = [];
+  var clsdefs: ClsDef<any>[] = [];
+  var stmts: Stmt<any>[] = [];
 
-export function traverseExpr(c : TreeCursor, s : string) : Expr {
-  switch(c.type.name) {
-    case "Number":
-      return {
-        tag: "num",
-        value: Number(s.substring(c.from, c.to))
-      }
-    case "VariableName":
-      return {
-        tag: "id",
-        name: s.substring(c.from, c.to)
-      }
-    case "CallExpression":
-      c.firstChild();
-      const callName = s.substring(c.from, c.to);
-      c.nextSibling(); // go to arglist
-      const args = traverseArgs(c, s);
-      // c.firstChild(); // go into arglist
-      // c.nextSibling(); // find single argument in arglist
-      // const arg = traverseExpr(c, s);
-      // c.parent(); // pop arglist
-      c.parent(); // pop CallExpression
-      if (args.length === 1) {
-        if (!(["print", "abs"].includes(callName))) {
-          throw new ParseError("unsupported builtin1 function");
-        }
-        return {
-          tag: "builtin1",
-          name: callName,
-          arg: args[0]
-        };
-      }
-      else if (args.length === 2) {
-        if (!(["max", "min", "pow"].includes(callName))) {
-          throw new ParseError("unsupported builtin2 function");
-        }
-        return {
-          tag: "builtin2",
-          name: callName,
-          arg1: args[0],
-          arg2: args[1]
-        };
-      }
-      else {
-        throw new ParseError("unsupported number of args");
-      }
-    case "BinaryExpression":
-      c.firstChild(); // go to left arg 
-      const left = traverseExpr(c, s);
-      c.nextSibling(); // go to op
-      // const op = s.substring(c.from, c.to);
-      var op: BinOp;
-      switch (s.substring(c.from, c.to)) {
-        case "+":
-          op = BinOp.Plus;
-          break;
-        case "-":
-          op = BinOp.Minus;
-          break;
-        case "*":
-          op = BinOp.Mul;
-          break;
-        default:
-          throw new ParseError("unknown binary operator");
-      }
-      c.nextSibling(); // go to right arg
-      const right = traverseExpr(c, s);
-      c.parent();
-      return {
-        tag: "binexpr",
-        op: op,
-        left: left,
-        right: right
-      };
-    case "UnaryExpression":
-      c.firstChild();
-      var uop: UnOp;
-      switch (s.substring(c.from, c.to)) {
-        case "-":
-          uop = UnOp.Minus;
-          break;
-        case "+":
-          uop = UnOp.Plus;
-          break;
-        default:
-          throw new ParseError("unknown unary operator");
-      }
-      c.nextSibling(); // go to right arg
-      const uarg = traverseExpr(c, s);
-      c.parent();
-      return { tag: "unexpr", op: uop, expr: uarg };
-    default:
-      throw new ParseError("Could not parse expr at " + c.from + " " + c.to + ": " + s.substring(c.from, c.to));
-  }
+  traverseProgram(t, source, vardefs, fundefs, clsdefs, stmts);
+  return { vardefs, fundefs, clsdefs, stmts }
 }
 
-export function traverseStmt(c : TreeCursor, s : string) : Stmt {
-  switch(c.node.type.name) {
-    case "AssignStatement":
-      c.firstChild(); // go to name
-      const name = s.substring(c.from, c.to);
-      c.nextSibling(); // go to equals
-      c.nextSibling(); // go to value
-      const value = traverseExpr(c, s);
-      c.parent();
-      return {
-        tag: "define",
-        name: name,
-        value: value
-      }
-    case "ExpressionStatement":
-      c.firstChild();
-      const expr = traverseExpr(c, s);
-      c.parent(); // pop going into stmt
-      return { tag: "expr", expr: expr }
-    default:
-      throw new ParseError("Could not parse stmt at " + c.node.from + " " + c.node.to + ": " + s.substring(c.from, c.to));
-  }
-}
-
-export function traverse(c : TreeCursor, s : string) : Array<Stmt> {
-  switch(c.node.type.name) {
+export function traverseProgram(t: TreeCursor, s: string,
+  vardefs: VarDef<any>[], fundefs: FunDef<any>[], clsdefs: ClsDef<any>[],
+  stmts: Stmt<any>[]) {
+  // The top node in the program is a Script node with a list of children
+  // that are various statements
+  switch (t.node.type.name) {
     case "Script":
-      const stmts = [];
-      c.firstChild();
+      const idSet = new Set();
+      if (!t.firstChild()) {//in case of empty program
+        t.parent();
+        return;
+      }
+
+      while (true) {
+        const decl = isDecl(t, s);
+        if (decl === "AssignStatement") {
+          vardefs.push(traverseVarDef(t, s, idSet));
+        } else if (decl === "FunctionDefinition") {
+          fundefs.push(traverseFunDef(t, s, idSet));
+        } else if (decl === "ClassDefinition") {
+          clsdefs.push(traverseClsDef(t, s, idSet));
+        } else {
+          break;
+        }
+        if (!t.nextSibling()) {
+          // All definitions
+          t.parent();
+          return;
+        }
+      }
+
       do {
-        stmts.push(traverseStmt(c, s));
-      } while(c.nextSibling())
-      console.log("traversed " + stmts.length + " statements ", stmts, "stopped at " , c.node);
+        // if (isVarDecl(c, s) || isFunDef(c, s) || isClassDecl(t, s))
+        //   throw new Error("PARSER ERROR: variable and function declaration must come before the body");
+        stmts.push(traverseStmt(t, s));
+      } while (t.nextSibling())
+      break;
+
+    default:
+      throw new ParseError("Could not parse program at " + t.node.from + " " + t.node.to);
+  }
+}
+
+export function traverseVarDef(t: TreeCursor, s: string, idSet: Set<any>): VarDef<any> {
+  t.firstChild(); // focused on name (the first child)
+  var name = s.substring(t.from, t.to);
+  if (idSet.has(name)) {
+    throw new Error(`Duplicate declaration of identifier ` +
+      `in the same scope: ${name}`);
+  }
+  else {
+    idSet.add(name);
+  }
+  t.nextSibling(); // must be Typedef
+  t.firstChild(); // focus on :
+  t.nextSibling(); // focus on type
+  var typ: Type = traverseType(t, s);
+  t.parent();
+  t.nextSibling(); // focus on = sign
+  t.nextSibling(); // focused on the literal expression
+  var init = traverseLit(t, s);
+  t.parent();
+  return {
+    typedvar: { name, typ },
+    init
+  };
+}
+
+
+export function traverseFunDef(t: TreeCursor, s: string, idSet: Set<any>): FunDef<any> {
+  t.firstChild();  // Focus on def
+  t.nextSibling(); // Focus on name of function
+  var name = s.substring(t.from, t.to);
+  if (idSet.has(name)) {
+    throw new Error(`Duplicate declaration of identifier ` +
+      `in the same scope: ${name}`);
+  }
+  else {
+    idSet.add(name);
+  }
+  t.nextSibling(); // Focus on ParamList
+  var curIdSet = new Set();
+  var params = traverseParameters(t, s, curIdSet);
+  t.nextSibling(); // Focus on Body or TypeDef
+  var ret: Type = "none";
+  var maybeTD = t;
+  if (maybeTD.type.name === "TypeDef") {
+    t.firstChild();
+    ret = traverseType(t, s);
+    t.parent();
+  }
+  t.nextSibling(); // Focus on Body
+
+  var localvar: VarDef<any>[];
+  var localfun: FunDef<any>[];
+  var body: Stmt<any>[];
+  [localvar, localfun, body] = traverseFuncBody(t, s, curIdSet);
+  t.parent();      // Pop to FunctionDefinition
+  return {
+    name, params, ret,
+    body: { vardefs: localvar, stmts: body }
+  };
+}
+
+
+export function traverseClsDef(t: TreeCursor, s: string, idSet: Set<any>): ClsDef<any> {
+  t.firstChild(); // focus on class
+  t.nextSibling(); // focus on class name
+  var name = s.substring(t.from, t.to);
+  if (idSet.has(name)) {
+    throw new Error(`Duplicate declaration of identifier ` +
+      `in the same scope: ${name}`);
+  }
+  else {
+    idSet.add(name);
+  }
+  var curIdSet = new Set();
+  t.nextSibling(); // focus on father object (ArgList)
+  t.firstChild(); // (
+  t.nextSibling(); 
+  const superName = s.substring(t.from, t.to);
+  t.parent();
+  t.nextSibling(); // focus on body
+  var fields: VarDef<any>[];
+  var methods: FunDef<any>[];
+  var builtins: Map<string, FunDef<any>>;
+  [fields, methods, builtins] = traverseClsBody(t, s, curIdSet);
+  t.parent();
+  return {
+    tag: "class", name, super: superName, 
+    methods, fields, builtins
+  };
+}
+
+export function traverseFuncBody(t: TreeCursor, s: string, idSet: Set<any>):
+  [VarDef<any>[], FunDef<any>[], Stmt<any>[]] {
+  switch (t.node.type.name) {
+    case "Body":  // function body
+      let vardefs: VarDef<any>[] = [];
+      let fundefs: FunDef<any>[] = [];
+      let stmts: Stmt<any>[] = []; 
+      t.firstChild(); //focus on semicolon
+      // if (!t.nextSibling()) { //in case of empty program
+      //   t.parent();
+      // }
+      t.nextSibling();
+      while (true) {
+        const decl = isDecl(t, s);
+        if (decl === "AssignStatement") {
+          vardefs.push(traverseVarDef(t, s, idSet));
+        } else if (decl === "FunctionDefinition") {
+          // fundefs.push(traverseFunDef(t, s, idSet));
+          throw new Error("nested function not supported");
+        } else {
+          break;
+        }
+        if (!t.nextSibling()){
+          // All definitions
+          t.parent();
+          return;
+        }
+      }
+
+      do {
+        // if (isVarDecl(c, s) || isFunDef(c, s) || isClassDecl(t, s))
+        //   throw new Error("PARSER ERROR: variable and function declaration must come before the body");
+        if (t.type.name.search("Statement") != -1)
+          stmts.push(traverseStmt(t, s));
+      } while (t.nextSibling())
+      t.parent();
+      return [vardefs, fundefs, stmts];
+  }
+}
+
+export function traverseClsBody(t: TreeCursor, s: string, idSet: Set<any>):
+  [VarDef<any>[], FunDef<any>[], Map<string, FunDef<any>>] {
+  switch (t.node.type.name) {
+    case "Body":  // function body
+      let vardefs: VarDef<any>[] = [];
+      let fundefs: FunDef<any>[] = [];
+      let builtins = new Map<string, FunDef<any>>();
+      t.firstChild(); //focus on semicolon
+      // if (!t.nextSibling()) { //in case of empty program
+      //   t.parent();
+      // }
+      while (t.nextSibling()) {
+        const decl = isDecl(t, s);
+        if (decl === "AssignStatement") {
+          vardefs.push(traverseVarDef(t, s, idSet));
+        } else if (decl === "FunctionDefinition") {
+          let func = traverseFunDef(t, s, idSet);
+          if (func.name === "__init__") {
+            builtins.set(func.name, func);
+          } else {
+            fundefs.push(func);
+          }
+        } else {
+          if (t.type.name.search("Statement") != -1)
+            throw new ParseError("Could not parse statement at " +
+              t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+          else 
+            break;
+        }
+      }
+      t.parent();
+      return [vardefs, fundefs, builtins];
+  }
+}
+
+export function traverseStmts(t: TreeCursor, s: string): Stmt<any>[] {
+  // The top node in the program is a Script node with a list of children
+  // that are various statements
+  switch (t.node.type.name) {
+    case "Body":
+      // focus on Body
+      var stmts: Stmt<any>[] = []
+      t.firstChild(); // focus on semicolon
+      t.nextSibling();
+      do {
+        if (t.type.name.search("Statement") != -1)
+          stmts.push(traverseStmt(t, s));
+      } while (t.nextSibling()); // t.nextSibling() returns false when it reaches
+      //  the end of the list of children
+      t.parent();
       return stmts;
     default:
-      throw new ParseError("Could not parse program at " + c.node.from + " " + c.node.to);
+      throw new ParseError("Could not parse program at " + t.node.from + " " + t.node.to);
   }
 }
-export function parse(source : string) : Array<Stmt> {
-  const t = parser.parse(source);
-  return traverse(t.cursor(), source);
+
+
+/*
+  Invariant – t must focus on the same node at the end of the traversal
+*/
+export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
+  switch (t.type.name) {
+    case "ReturnStatement":
+      t.firstChild();  // Focus return keyword
+      var value: Expr<any>;
+      if (t.nextSibling()) // Focus expression
+        value = traverseExpr(t, s);
+      else
+        value = { tag: "literal", value: { tag: "none" } };
+      t.parent();
+      return { tag: "return", value };
+    case "AssignStatement":
+      // assign: x = 1
+      t.firstChild(); // focused on name (the first child)
+      var name = traverseLValue(t, s);
+      t.nextSibling(); // focused on = sign. May need this for complex tasks, like +=!
+      t.nextSibling(); // focused on the value expression
+      var value = traverseExpr(t, s);
+      t.parent();
+      return { tag: "assign", target: name, value };
+      break;
+    case "ExpressionStatement":
+      t.firstChild(); // The child is some kind of expression, the
+      // ExpressionStatement is just a wrapper with no information
+      var expr = traverseExpr(t, s);
+      t.parent();
+      return { tag: "expr", expr: expr };
+    case "PassStatement":
+      return { tag: "pass" };
+    case "IfStatement":
+      t.firstChild();  // Focus on if
+      let ifstmt = traverseCondBody(t, s);
+
+      let elifstmt: CondBody<any>[] = [];
+      let elsestmt: Stmt<any>[] = [];
+      t.nextSibling(); // Focus on possible elifs
+      while (s.substring(t.from, t.to) === "elif") {
+        elifstmt.push(traverseCondBody(t, s));
+        t.nextSibling();
+      }
+      if (s.substring(t.from, t.to) === "else") {
+        t.nextSibling(); // Focus on body
+        elsestmt = traverseStmts(t, s);
+      }
+      t.parent();
+      return {
+        tag: "if",
+        ifstmt, elifstmt, elsestmt
+      };
+    case "WhileStatement":
+      t.firstChild();  // Focus on while
+      let whilestmt = traverseCondBody(t, s);
+      t.parent();
+      return { tag: "while", whilestmt };
+    default:
+      throw new ParseError("Could not parse statement at " +
+        t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+  }
+}
+
+export function traverseMemberExpr(t:TreeCursor, s:string): MemberExpr<any> {
+  t.firstChild(); // member expr or variable
+  const obj = traverseExpr(t, s);
+  t.nextSibling(); // dot
+  t.nextSibling(); // PropertyName
+  const field = s.substring(t.from, t.to);
+  t.parent();
+  return { tag: "getfield", obj, field };
+}
+
+export function traverseLValue(t: TreeCursor, s: string): LValue <any> {
+  switch(t.type.name) {
+    case "VariableName":
+      return { tag: "id", name: s.substring(t.from, t.to) };
+    case "MemberExpression":
+      return traverseMemberExpr(t, s);
+    default:
+      throw new ParseError("Could not parse expr at " +
+        t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+  }
+}
+
+export function traverseType(t: TreeCursor, s: string): Type {
+  switch (t.type.name) {
+    case "VariableName":
+      const name = s.substring(t.from, t.to);
+      // return name;
+      if (name === "int" || name === "bool" || name === "none") {
+        return name;
+      } else {
+        return { tag: "object", class: name };
+      }
+    default:
+      throw new Error("Unknown type: " + t.type.name);
+
+  }
+}
+
+export function traverseParameters(t: TreeCursor, s: string, idSet: Set<any>): TypedVar[] {
+  t.firstChild();  // Focuses on open paren
+  const parameters = [];
+  t.nextSibling(); // Focuses on a VariableName
+  while (t.type.name !== ")") {
+    let name = s.substring(t.from, t.to);
+    t.nextSibling(); // Focuses on "TypeDef", hopefully, or "," if mistake
+    let nextTagName = t.type.name; // NOTE(joe): a bit of a hack so the next line doesn't if-split
+    if (nextTagName !== "TypeDef") {
+      throw new Error("Missed type annotation for parameter " + name)
+    };
+    if (idSet.has(name)) {
+      throw new Error(`Duplicate declaration of identifier ` +
+        `in the same scope: ${name}`);
+    }
+    else {
+      idSet.add(name);
+    }
+    t.firstChild();  // Enter TypeDef, foucs on semicolon
+    t.nextSibling(); // Focuses on type itself
+    let typ = traverseType(t, s);
+    t.parent();
+    t.nextSibling(); // Move on to comma or ")"
+    parameters.push({ name, typ });
+    t.nextSibling(); // Focuses on a VariableName
+  }
+  t.parent();       // Pop to ParamList
+  return parameters;
+}
+
+export function traverseLit(t: TreeCursor, s: string): Literal<any> {
+  switch (t.type.name) {
+    case "Boolean":
+      if (s.substring(t.from, t.to) === "True")
+        return { tag: "bool", value: true };
+      else
+        return { tag: "bool", value: false };
+    case "Number":
+      return { tag: "number", value: Number(s.substring(t.from, t.to)) };
+    case "None":
+      return { tag: "none" };
+    default:
+      throw new ParseError(`Not a literal: ${t.type.name}`);
+  }
+}
+
+export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
+  switch (t.type.name) {
+    case "Boolean":
+    case "Number":
+    case "None":
+      return { tag: "literal", value: traverseLit(t, s) };
+    case "VariableName":
+    case "self":
+    case "PropertyName":
+      return { tag: "id", name: s.substring(t.from, t.to) };
+    case "CallExpression":
+      t.firstChild(); // Focus name
+      let node = t;
+      if (node.type.name === "VariableName") {
+        var name = s.substring(t.from, t.to);
+        t.nextSibling(); // Focus ArgList
+        // t.firstChild(); // Focus open paren
+        var args = traverseArguments(t, s);
+        var result: Expr<any> = { tag: "call", name, args };
+        t.parent();
+        return result;
+      }
+      else if (node.type.name === "MemberExpression") {
+        t.firstChild(); // VariableName
+        var obj = traverseExpr(t, s);
+        t.nextSibling(); // dot
+        t.nextSibling(); // PropertyName
+        var name = s.substring(t.from, t.to);
+        t.parent();
+        t.nextSibling(); // ArgList
+        var args = traverseArguments(t, s);
+        var result: Expr<any> = { tag: "method", obj, name, args };
+        t.parent();
+        return result;
+      }
+      break;
+
+    case "BinaryExpression":
+      t.firstChild(); // go to lhs
+      const lhsExpr = traverseExpr(t, s);
+      t.nextSibling(); // go to op
+      var opStr = s.substring(t.from, t.to);
+      if (!isOp(opStr)) {
+        throw new Error(`Unknown or unhandled op: ${opStr}`);
+      }
+      t.nextSibling(); // go to rhs
+      const rhsExpr = traverseExpr(t, s);
+      t.parent();
+      return {
+        tag: "binop", op: opStr,
+        lhs: lhsExpr, rhs: rhsExpr
+      };
+    case "UnaryExpression":
+      t.firstChild();
+      var uop = s.substring(t.from, t.to);
+      if (!isUnOp(uop)) {
+        throw new Error(`Unknown or unhandled op: ${uop}`);
+      }
+      t.nextSibling(); // go to right arg
+      const uarg = traverseExpr(t, s);
+      t.parent();
+      return { tag: "unop", op: uop, expr: uarg };
+    case "ParenthesizedExpression":
+      t.firstChild(); //focus on (
+      t.nextSibling();
+      const insideExpr = traverseExpr(t, s);
+      t.nextSibling();
+      const maybeParen = t;
+      if (maybeParen.type.name !== ")")
+        throw new ParseError("Could not parse expr at " +
+          t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+      t.parent();
+      return insideExpr;
+    case "MemberExpression":
+      return traverseMemberExpr(t, s);
+    default:
+      throw new ParseError("Could not parse expr at " +
+        t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+  }
+}
+
+export function traverseCondBody(t: TreeCursor, s: string): CondBody<any> {
+  //focus on if or elif or while etc
+  t.nextSibling(); //focus on condition
+  let cond = traverseExpr(t, s);
+  t.nextSibling(); // focuse on body
+  let body = traverseStmts(t, s);
+  return { cond, body };
+}
+
+export function traverseArguments(t: TreeCursor, s: string): Expr<any>[] {
+  // c is the subtree of the arglist
+  const args = [];
+  t.firstChild(); // Focuses on open paren
+  while (t.nextSibling()) { // Focuses on a VariableName
+    if (t.type.name === ")") { // maybe no args
+      break;
+    }
+    args.push(traverseExpr(t, s));
+    t.nextSibling(); // Focuses on either "," or ")"
+    if (t.type.name !== ")" && t.type.name !== ",") { // maybe no args
+      throw new ParseError("Could not parse expr at " +
+        t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+    }
+  }
+  t.parent(); // Pop to ArgList
+  return args;
 }
