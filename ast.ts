@@ -8,20 +8,26 @@ export type FunDef<A> =
   { name: string, params?: TypedVar[], ret?: Type, body: FuncBody<A> }
 
 export type FuncBody<A> = 
-  { vardefs: VarDef<A>[],  stmts: Stmt<A>[] }
+  { vardefs: VarDef<A>[], fundefs?: FunDef<A>[], decls?: ScopeVar<A>[], stmts: Stmt<A>[] }
 
 export type TypedVar =
   | { name: string, typ: Type }
 
-export type ClsDef<A> = 
-  { tag: "class", name: string, super: string, methods: FunDef<A>[], fields: VarDef<A>[], 
-    builtins?: Map<string, FunDef<A>>, indexOfField?: Map<string, number> }
+export type ScopeVar<A> = 
+  | { a?:A, name: string, nonlocal: boolean };
 
-export type ObjType = { tag: "object", class: string }
+export type ClsDef<A> = 
+  { tag: "class", name: string, super: string, 
+    methods: FunDef<A>[], fields: VarDef<A>[], 
+    indexOfField?: Map<string, number>,
+    indexOfMethod?: Map<string, number>, 
+    ptrOfMethod?: Map<string, string> }
+
+export type ObjType = { tag: "object", class: string, ref?: boolean, refed?: boolean }
 export type Type =
-  | "int"
-  | "bool"
-  | "none"
+  | { tag: "int", ref?: boolean, refed?: boolean}
+  | { tag: "bool", ref?: boolean, refed?: boolean}
+  | { tag: "none", ref?: boolean, refed?: boolean }
   | ObjType
 
 export type Literal<A> = 
@@ -36,8 +42,11 @@ export type CondBody<A> =
 export type MemberExpr<A> = 
   { a?: A, tag: "getfield", obj: Expr<A>, field: string }
 
-export type LValue<A> = 
+export type IdVar<A> = 
   | { a?: A, tag: "id", name: string, global?: boolean }
+
+export type LValue<A> = 
+  | IdVar<A>
   | MemberExpr<A>
 
 export type Stmt<A> =
@@ -53,7 +62,7 @@ export type Expr<A> =
   | { a?: A, tag: "literal", value: Literal<A> }
   | { a?: A, tag: "binop", op: BinOp, lhs: Expr<A>, rhs: Expr<A> }
   | { a?: A, tag: "unop", op: UnOp, expr: Expr<A> }
-  | { a?: A, tag: "id", name: string, global?: boolean }
+  | IdVar<A>
   | { a?: A, tag: "call", name: string, args: Expr<A>[] }
   | MemberExpr<A>
   | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[]}
@@ -77,14 +86,60 @@ export function isUnOp(maybeOp: string): maybeOp is UnOp {
   return maybeOp in unops;
 }
 
-export function isCls(maybeCls: Type): maybeCls is Type {
-  return (maybeCls !== "int") && (maybeCls !== "bool") && (maybeCls !== "none")
+
+
+export function isAssignable(src: Type, tar: Type): boolean {
+  /* 
+  if the type tar can be assigned to original type src 
+  */
+  return isTypeEqual(src, tar) || isSubType(src, tar);
+}
+
+export function isSubType(src: Type, tar: Type): boolean {
+  // return if tar is a subType of src
+  if (isCls(src)) {
+    return isTypeEqual(tar, {tag: "none"});
+  }
+}
+
+export function isTypeEqual(typ1: Type, typ2: Type): boolean {
+  return getTypeStr(typ1) === getTypeStr(typ2);
 }
 
 
 export function getTypeStr(typ: Type): string {
-  if (typeof typ === "string")
-    return typ;
-  else
+  if (isSimpleType(typ))
+    return typ.tag;
+  else if (isCls(typ))
     return (typ as ObjType).class
+}
+
+export function isSimpleType(maybeTyp: Type): boolean {
+  return (maybeTyp.tag === "int") || (maybeTyp.tag === "bool") || (maybeTyp.tag === "none");
+}
+
+export function isCls(maybeCls: Type): maybeCls is ObjType {
+  return (maybeCls as ObjType).class !== undefined;
+  // return "class" in (maybeCls as ObjType);
+}
+
+export function isRefType(maybeTyp: Type): boolean {
+  return maybeTyp.ref !== undefined;
+  // return "class" in (maybeCls as ObjType);
+}
+
+export const keywords = new Set<string>([
+  "int", "bool", "None", "def", "if", "while", "else", "for", "elif", "return", "class",
+  "global", "nonlocal", "str", "list", "import", "try", "except", "False", "True", "and",
+  "as", "assert", "async", "await", "break", "continue", "del", "finally", "from", "in",
+  "is", "lambda", "not", "or", "pass", "raise", "with", "yield"
+]);
+
+const idReg = /^[a-zA-Z\_][0-9a-zA-Z_]*/;
+
+export function isValidIdentifier(id: string): boolean {
+  if (keywords.has(id)) {
+    return false;
+  }
+  return idReg.test(id);
 }

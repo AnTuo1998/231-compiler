@@ -8,7 +8,12 @@ export function typeCheck(source: string) : Type {
   const tcp = tcProgram(parseProgram(source));
   const lastStmt = tcp.stmts[tcp.stmts.length - 1];
   if (lastStmt && lastStmt.tag === "expr") {
-    return lastStmt.expr.a;
+    const lastType = lastStmt.expr.a;
+    if (lastType.tag === "int" || lastType.tag === "bool" || lastType.tag === "none") {
+      return lastType.tag;
+    } else if (lastType.tag === "object") {
+      return CLASS(lastType.class);
+    }
   }
   else
     return "none";
@@ -21,15 +26,21 @@ export function typeCheck(source: string) : Type {
 export async function run(source: string) {
   let newImportObject = {
     ...importObject,
-    imports : {
-      ...importObject.imports,
-      ObjInit: (arg: any) => {
-        if (arg === 0) {
+    check: {
+      check_init: (arg: any) => {
+        if (arg <= 0) {
           throw new Error("RUNTIME ERROR: object not intialized");
         }
         return arg;
-      }
+      },
+      check_index: (length: any, arg: any) => {
+        if (arg >= length || arg < 0) {
+          throw new Error("RUNTIME ERROR: Index out of bounds");
+        }
+        return arg;
+      },
     }
+
   };
   return Run(compile(source), newImportObject);
 }
