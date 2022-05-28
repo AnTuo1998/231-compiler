@@ -1,7 +1,6 @@
 import { TreeCursor } from '@lezer/common';
 import { parser } from '@lezer/python';
-import { assert } from 'console';
-import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, isCls, ScopeVar } from './ast';
+import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr } from './ast';
 import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier } from './ast';
 import { ParseError } from './error';
 
@@ -343,14 +342,28 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
   }
 }
 
-export function traverseMemberExpr(t:TreeCursor, s:string): MemberExpr<any> {
+export function traverseMemberExpr(t:TreeCursor, s:string): MemberExpr<any> | IndexExpr<any> {
   t.firstChild(); // member expr or variable
   const obj = traverseExpr(t, s);
-  t.nextSibling(); // dot
-  t.nextSibling(); // PropertyName
-  const field = s.substring(t.from, t.to);
+  t.nextSibling(); // dot or square bracket [
+  if (t.type.name === ".") {
+    t.nextSibling(); // PropertyName
+    const field = s.substring(t.from, t.to);
+    t.parent();
+    return { tag: "getfield", obj, field };
+  } else if (t.type.name === "[") {
+    t.nextSibling();
+    const idx = traverseExpr(t, s);
+    t.nextSibling();
+    let c = t;
+    if (c.type.name === "]") {
+      c.parent();
+      return { tag: "index", obj, idx };
+    }
+  }        
   t.parent();
-  return { tag: "getfield", obj, field };
+  throw new ParseError("Could not parse expr at " + t.type.name + t.from + " " + t.to + ": " + s.substring(t.from, t.to));
+
 }
 
 export function traverseLValue(t: TreeCursor, s: string): LValue <any> {
@@ -372,6 +385,8 @@ export function traverseType(t: TreeCursor, s: string): Type {
       // return name;
       if (name === "int" || name === "bool" || name === "none") {
         return { tag: name };
+      } else if (name === "str") {
+        return { tag: "string" };
       } else {
         return { tag: "object", class: name };
       }
@@ -423,6 +438,9 @@ export function traverseLit(t: TreeCursor, s: string): Literal<any> {
       return { tag: "number", value: Number(s.substring(t.from, t.to)) };
     case "None":
       return { tag: "none" };
+    case "String":
+      // remove double quotation marks
+      return { tag: "string", value: s.substring(t.from + 1, t.to - 1) };
     default:
       throw new ParseError(`Not a literal: ${t.type.name}`);
   }
@@ -433,6 +451,7 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
     case "Boolean":
     case "Number":
     case "None":
+    case "String":
       return { tag: "literal", value: traverseLit(t, s) };
     case "VariableName":
     case "self":
@@ -464,7 +483,6 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
         return result;
       }
       break;
-
     case "BinaryExpression":
       t.firstChild(); // go to lhs
       const lhsExpr = traverseExpr(t, s);

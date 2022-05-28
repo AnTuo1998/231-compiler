@@ -1,3 +1,4 @@
+import { StringifyOptions } from 'querystring';
 import wabt from 'wabt';
 import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, isRefType, TypedVar } from "./ast";
 import { parseProgram } from './parser';
@@ -8,11 +9,29 @@ type ClsEnv = Map<string, [ClsDef<Type>, number]>;
 let wabtApi: any = null;
 let selfVar = 0;
 let selfVarMax = 0;
-
+let leftParen = /(\()/g;
+let rightParen = /(\))/g;
 
 function addIndent(s: string, indent: number = 0): string {
   return "  ".repeat(indent) + s;
 }
+
+function addBlockIndent(block: string[], indent: number = 0): string[] {
+  return block.map(s => {
+    const newS = addIndent(s, indent);
+    if (s.startsWith("(block") || s.startsWith("(func") || s.startsWith("(loop")) {
+      indent += 1;
+    } else if(s.startsWith(")")) {
+      indent -= 1
+    } 
+    // else {
+    //   indent += [...s.match(leftParen)].length - [...s.match(rightParen)].length;
+    // }
+    return newS
+  })
+}
+
+
 
 function variableNames(vardefs: VarDef<Type>[]): string[] {
   const vars: Array<string> = [];
@@ -37,8 +56,6 @@ export async function run(watSource: string, config: any): Promise<any> {
   }
   const parsed = wabtApi.parseWat("example", watSource);
   const binary = parsed.toBinary({});
-  var memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
-  config = { ...config, env: { memory: memory } };
   const wasmModule = await WebAssembly.instantiate(binary.buffer, config);
   return (wasmModule.instance.exports as any)._start();
 }
@@ -72,10 +89,35 @@ export function codeGenLit(lit: Literal<Type>): Array<string> {
       return [`(i32.const 1)`];
     else
       return [`(i32.const 0)`];
-  }
-  else {
+  } else if (lit.tag === "none") {
     return [`(i32.const 0)`];  // none
+  } else if (lit.tag === "string") {
+    return codeGenStrLit(lit.value);  // none
   }
+}
+
+export function codeGenStrLit(value: string): string[] {
+  const stmts: string[] = [];
+  stmts.push(
+    `(global.get $heap)`,
+    `(i32.const ${value.length})`,
+    `(i32.store)`
+  );
+  value.split("").slice().forEach((c, i) => {
+    stmts.push(
+      `(global.get $heap)`,
+      `(i32.add (i32.mul (i32.const ${i + 1}) (i32.const 4)))`,
+      `(i32.const ${c.charCodeAt(0)})`,
+      `(i32.store)`,
+    )
+  });
+  stmts.push(
+    `(global.get $heap) ;; addr of str`,
+    `(global.get $heap)`,
+    `(i32.add (i32.mul (i32.const ${value.length + 1}) (i32.const 4)))`,
+    `(global.set $heap)`
+  );
+  return stmts;
 }
 
 
@@ -90,6 +132,17 @@ export function codeGenArgs(args: Expr<Type>[], locals: Env, clsEnv: ClsEnv): Ar
     else
       return codeGenExpr(arg, locals, clsEnv);
   }).flat();
+}
+
+export function codeGenMemberExpr(expr: MemberExpr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
+  const objStmt = codeGenExpr(expr.obj, locals, clsEnv);
+  const [cls, tableIdx] = clsEnv.get(getTypeStr(expr.obj.a));
+
+  objStmt.push(
+    `(call $check_init)`,
+    `(i32.add (i32.const ${cls.indexOfField.get(expr.field) * 4 + 4}))`
+  );
+  return objStmt;
 }
 
 export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
@@ -109,8 +162,11 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
     case "binop": {
       const lhsExprs = codeGenExpr(expr.lhs, locals, clsEnv);
       const rhsExprs = codeGenExpr(expr.rhs, locals, clsEnv);
-      const opstmts = opStmts(expr.op);
-      return [...lhsExprs, ...rhsExprs, ...opstmts];
+      let opstmts = opStmts(expr.op);
+      if ((expr.lhs.a.tag === "list" || expr.lhs.a.tag === "string") && expr.op === "+") {
+        opstmts = [`call $concat_list_string`];
+      }
+      return [...lhsExprs, ...rhsExprs, ...opstmts,];
     }
     case "unop":
       const unaryStmts = codeGenExpr(expr.expr, locals, clsEnv);
@@ -119,7 +175,6 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         case "not": return ["(i32.const 1)", ...unaryStmts, "(i32.sub)"];
       }
     case "call":
-      // var valStmts = expr.args.map(e => codeGenExpr(e, locals, clsEnv)).flat();
       var valStmts = codeGenArgs(expr.args, locals, clsEnv);
       let toCall = expr.name;
       if (clsEnv.has(expr.name)) { // this is an object constructor
@@ -131,10 +186,16 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
           `(i32.store)`
         );
         clsdef.fields.map((f, i) => {
+          let litStmt:string[];
+          if (f.init.tag === "string") {
+            litStmt = [`global.get $${clsdef.name}$${f.typedvar.name}`];
+          } else {
+            litStmt = codeGenLit(f.init);
+          }
           initstmts.push(
             `(global.get $heap)`,
             `(i32.add (i32.const ${4 * i + 4}))`,
-            codeGenLit(f.init)[0],
+            ...litStmt,
             `(i32.store)`
           );
         });
@@ -159,9 +220,16 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
           case "bool": toCall = "print_bool"; break;
           case "int": toCall = "print_num"; break;
           case "none": toCall = "print_none"; break;
+          case "string": toCall = "print_string"; break;
         }
         if (arg.tag === "id" && locals.get(arg.name))
           valStmts.push(`(i32.load)`);
+      } else if (expr.name === "len") {
+        valStmts.push(
+          `(call $check_init)`,
+          `(i32.load)`
+        );
+        return valStmts;
       }
       valStmts.push(`(call $${toCall})`);
       return valStmts;
@@ -188,18 +256,16 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         `(i32.add (i32.const ${toCallIdx}))`, 
         `(call_indirect (type ${cls.ptrOfMethod.get(expr.name)}$type))`
       ];
+    case "index": {
+      const objStmts = codeGenExpr(expr.obj, locals, clsEnv);
+      const idxStmts = codeGenExpr(expr.idx, locals, clsEnv);
+      // now the type is list or string
+      const indexStmts = [
+        ...objStmts, ...idxStmts, `(call $get_${expr.obj.a.tag}_index)`
+      ];
+      return indexStmts;
     }
-}
-
-export function codeGenMemberExpr(expr: MemberExpr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
-  const objStmt = codeGenExpr(expr.obj, locals, clsEnv);
-  const [cls, tableIdx] = clsEnv.get(getTypeStr(expr.obj.a));
-  
-  objStmt.push(
-    `(call $check_init)`,
-    `(i32.add (i32.const ${cls.indexOfField.get(expr.field) * 4 + 4}))`
-  );
-  return objStmt;
+  }
 }
 
 export function codeGenCondBody(condbody: CondBody<Type>, locals: Env, clsEnv: ClsEnv, indent: number, tag = "if"): Array<string> {
@@ -308,7 +374,7 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
   | as arg     |                      directly local.get                               |    global.get    |  
   |-------------------------------------------------------------------------------------------------------|
  */
-  const variables = variableNames(f.body.vardefs);
+  // const variables = variableNames(f.body.vardefs);
   f.body.vardefs.forEach(v => withParamsAndVariables.set(v.typedvar.name, v.typedvar.typ.refed));
   f.params.forEach(p => {
     let flag = isRefType(p.typ) ? p.typ.ref : p.typ.refed;
@@ -334,11 +400,20 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
     return paramStmt.map(s => addIndent(s, indent + 1));
   }).flat().join("\n");
 
-  const varDecls = variables.map(v => {
-    return addIndent(`(local $${v} i32)`, indent + 1)
+  const varDecls = f.body.vardefs.map(v => {
+    return addIndent(`(local $${v.typedvar.name} i32)`, indent + 1)
   }).join("\n");
 
-  const varAssign = f.body.vardefs.map(v => codeGenVars(v, withParamsAndVariables, indent + 1)).join("\n");
+  const varAssign = f.body.vardefs.map(v => {
+    if (v.init.tag === "string") {
+      return [ 
+        `(global.get $${f.name}$${v.typedvar.name})`,
+        `(local.set $${v.typedvar.name})`
+      ].map(s => addIndent(s, indent + 1)).join("\n");
+    } else {
+      return codeGenVars(v, withParamsAndVariables, indent + 1);
+    }
+  }).join("\n");
 
   const stmts = f.body.stmts.map(s => codeGenStmt(s, withParamsAndVariables, clsEnv, indent + 1)).flat();
 
@@ -355,7 +430,6 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
 
 export function codeGenVars(v: VarDef<Type>, locals: Env, indent: number): string {
   var valStmts: Array<string> = codeGenLit(v.init).flat();
-  // valStmts = valStmts.concat();
   if (locals.has(v.typedvar.name)) {
     if (v.typedvar.typ.refed) {
       // put on the heap
@@ -427,7 +501,7 @@ export function codeGenTable(classes: ClsDef<Type>[], clsEnv: ClsEnv, indent: nu
 
 export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   const varSelf = [];
-  for (let i = 0; i <= selfVarMax; i++) {
+  for (let i = 0; i < selfVarMax; i++) {
     varSelf.push(addIndent(`(global $self${i} (mut i32) (i32.const 0))`, indent));
   }
   var varUser = vars.map(v => addIndent(`(global $${v} (mut i32) (i32.const 0))`, 1));
@@ -452,6 +526,8 @@ export function compile(source: string): string {
   const clsEnv = new Map<string, [ClsDef<Type>, number]>();
   const [vars, funs, classes, stmts] = varsFunsStmts(ast);
   // classes.map(c => clsEnv.set(c.name, c)); //move into table
+  // ast.string.forEach(str => emptyEnv.set(str, true)); // Conflict with local nonlocal
+  // const builtinCode = builtinGen(basicIndent).join("\n");
   const tableStmts = codeGenTable(classes, clsEnv, basicIndent).join("\n");
   const clsCode: string[] = classes.map(c => codeGenCls(c, emptyEnv, clsEnv, basicIndent)).map(f => f.join("\n"));
   const allCls = clsCode.join("\n\n");
@@ -459,13 +535,11 @@ export function compile(source: string): string {
   const allFuns = funsCode.join("\n\n");
   const varAssign = ast.vardefs.map(v => codeGenVars(v, emptyEnv, basicIndent + 1));
   const allStmts = stmts.map(s => codeGenStmt(s, emptyEnv, clsEnv, basicIndent + 1)).flat();
-  // const varDecls = vars.map(v => addIndent(`(global $${v} (mut i32) (i32.const 0))`, basicIndent));
   const varDecls = codeGenAllGlobalVar(vars, basicIndent);
   const varCode = [
-    `(global $heap (mut i32) (i32.const 4))`,
+    // `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
-
   const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];
@@ -478,11 +552,17 @@ export function compile(source: string): string {
   }
 
   return `(module
-  (import "env" "memory" (memory $0 1))
+  (import "js" "memory" (memory $0 1))
+  (import "js" "heap" (global $heap (mut i32)))
   (func $print_num (import "imports" "print_num") (param i32) (result i32))
   (func $print_bool (import "imports" "print_bool") (param i32) (result i32))
   (func $print_none (import "imports" "print_none") (param i32) (result i32))
+  (func $print_string (import "imports" "print_string") (param i32) (result i32))
   (func $check_init (import "check" "check_init") (param i32) (result i32))
+  (func $check_index (import "check" "check_index") (param i32) (param i32) (result i32))
+  (func $concat_list_string (import "builtin" "$concat_list_string") (param i32) (param i32) (result i32))
+  (func $get_string_index (import "builtin" "$get_string_index") (param i32) (param i32) (result i32))
+  (func $get_list_index (import "builtin" "$get_list_index") (param i32) (param i32) (result i32))
   (func $abs(import "imports" "abs") (param i32) (result i32))
   (func $min(import "imports" "min") (param i32) (param i32) (result i32))
   (func $max(import "imports" "max") (param i32) (param i32) (result i32))
@@ -499,4 +579,3 @@ export function compile(source: string): string {
 ) 
   `;
 }
-

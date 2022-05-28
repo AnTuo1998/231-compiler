@@ -1,6 +1,5 @@
 import {compile, run} from './compiler';
 
-
 document.addEventListener("DOMContentLoaded", async () => {
   function display(arg : string) {
     const elt = document.createElement("pre");
@@ -9,7 +8,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // const out = document.getElementById("output");
     // out.innerText += arg + "\n";
   }
-  var importObject = {
+
+  var importObject:any = {
     imports: {
       print_num: (arg : any) => {
         console.log("Logging from WASM: ", arg);
@@ -25,6 +25,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         display("None");
         // return arg;
       },
+      print_string: (arg: any) => {
+        // TODO WebAssembly.Memory
+        const mem = new Uint32Array(memory.buffer);
+        let str: string = "\"";
+        const addr = Number(arg) / 4;
+        const len = mem[addr];
+        for (let i = 0; i < len; i++) {
+          // display(String.fromCharCode(mem[addr + i + 1]));
+          str += String.fromCharCode(mem[addr + i + 1]);
+        } 
+        str += "\""
+        display(str);
+      },
       abs: Math.abs,
       min: Math.min,
       max: Math.max,
@@ -36,8 +49,29 @@ document.addEventListener("DOMContentLoaded", async () => {
           throw new Error("RUNTIME ERROR: object not intialized");
         return arg;
       },
+      check_index: (length: any, arg: any) => {
+        if (arg >= length || arg < 0) {
+          throw new Error("RUNTIME ERROR: Index out of bounds");
+        }
+        return arg;
+      },
     },
   };
+  const heap = new WebAssembly.Global({ value: 'i32', mutable: true }, 4);
+  const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+  const memoryModule = await fetch('memory.wasm').then(response =>
+    response.arrayBuffer()
+  ).then(bytes =>
+    WebAssembly.instantiate(bytes, { js: { memory, heap } })
+  );
+  const builtinModule = await fetch('builtin.wasm').then(response =>
+    response.arrayBuffer()
+  ).then(bytes =>
+    WebAssembly.instantiate(bytes, { check: importObject.check, js: { memory, heap } })
+  );
+  importObject.js = { memory, heap };
+  importObject.builtin = builtinModule.instance.exports;
+  importObject.libmemory = memoryModule.instance.exports;
   const runButton = document.getElementById("run");
   const userCode = document.getElementById("user-code") as HTMLTextAreaElement;
   runButton.addEventListener("click", async () => {

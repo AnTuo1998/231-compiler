@@ -3,8 +3,8 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar } from "./ast";
-import { isTypeEqual, isCls, getTypeStr, isAssignable, isRefType } from "./ast"
+import { isTypeEqual, isCls, getTypeStr, isAssignable, isRefType, isIndexable } from "./ast"
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, IndexExpr, ScopeVar, IdVar, LValue } from "./ast";
 import { TypeError } from "./error"
 
 type FunctionsEnv = Env<OneFun<Type>>;
@@ -101,6 +101,8 @@ class OneFun<T> {
   }
 }
 
+const globalStrs = new Map<string, VarDef<Type>>();
+
 function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   if (!isCls(superCls) || !isCls(subCls)) {
     // sanity check
@@ -121,9 +123,9 @@ export function tcLit(lit: Literal<any>): Literal<Type> {
     case "number":
       return { ...lit, a: { tag: "int" } };
     case "bool":
-      return { ...lit, a: { tag: "bool"} };
     case "none":
-      return { ...lit, a: { tag: "none" } };
+    case "string":
+      return { ...lit, a: { tag: lit.tag } };
   }
 }
 
@@ -162,6 +164,9 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const nRHStyp = getTypeStr(nRHS.a);
       switch (e.op) {
         case "+":
+          if (nLHStyp === "string" && nLHStyp === nRHStyp) {
+            return { ...e, a: { tag: "string" }, lhs: nLHS, rhs: nRHS };
+          }
         case "-":
         case "*":
         case "//":
@@ -236,6 +241,15 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
           throw new Error("print expects a single argument");
         newArgs = [tcExpr(e.args[0], variables, functions, classes)];
         return { ...e, a: { tag: "none" }, args: newArgs };
+      } else if (e.name === "len") {
+        if (e.args.length !== 1)
+          throw new Error("len expects a single argument");
+        const newArgs = tcExpr(e.args[0], variables, functions, classes);
+        if (newArgs.a.tag !== "list" && newArgs.a.tag !== "string") {
+          // Chocopy do not type check this argument
+          throw new TypeError(`Cannot call len on type ${getTypeStr(newArgs.a)}`);
+        }
+        return { ...e, a: { tag: "int" }, args: [newArgs] };
       }
       var [found, cls] = classes.lookUpVar(e.name, SearchScope.GLOBAL);
       if (found) {
@@ -276,7 +290,9 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const methodInfo = cls.funs.get(e.name);
       let newArgs = tcArgs(e.args, methodInfo, variables, functions, classes, true);
       return { ...e, obj: newObj, args: newArgs, a: methodInfo.ret };
-  }
+    case "index": 
+      return tcIndexExpr(e, variables, functions, classes); 
+    }
 }
 
 function assignable(src: Type, tar: Type, classes: ClassEnv):boolean {
@@ -305,6 +321,23 @@ export function tcMemberExpr(e: MemberExpr<any>, variables: BodyEnv, functions: 
     throw new Error(`There is no attribute named ${e.field} in class ${typStr}`);
   }
   return { ...e, a: cls.vars.get(e.field), obj };
+}
+
+export function tcIndexExpr(e: IndexExpr<any>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv): IndexExpr<Type> {
+  const newObj = tcExpr(e.obj, variables, functions, classes);
+  if (!isIndexable(newObj.a)) {
+    throw new TypeError(`Cannot index into type ${getTypeStr(newObj.a)}`)
+  }
+  const newIdx = tcExpr(e.idx, variables, functions, classes);
+  if (newIdx.a.tag !== "int") {
+    throw new TypeError(`Index is of non-integer type ${getTypeStr(newIdx.a)}`)
+  }
+  if (newObj.a.tag === "string") {
+    return { ...e, obj: newObj, idx: newIdx, a: newObj.a };
+  }
+  else if (newObj.a.tag === "list") {
+    return { ...e, obj: newObj, idx: newIdx, a: newObj.a.type }
+  }
 }
 
 export function tcStmt(s: Stmt<any>, variables: BodyEnv, 
@@ -338,10 +371,14 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
         if (!assignable(target.a, rhs.a, classes)) {
           throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
         }
-        return { ...s, target, value: rhs};
-
-      }
-      else {
+        return { ...s, target, value: rhs };
+      } else if (s.target.tag === "index") {
+        const target = tcIndexExpr(s.target, variables, functions, classes);
+        if (!assignable(target.a, rhs.a, classes) || target.obj.a.tag !== "list") {
+          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
+        }
+        return { ...s, target, value: rhs };
+      } else {
         throw new Error("not implemented");
       }
       
@@ -405,7 +442,8 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     throw new TypeError(`All path in this function/method ` +
       `must have a return statement: ${f.name}`);
   }
-  const newName = `${namePrefix}$${f.name}`;
+  // const newName = `${namePrefix}$${f.name}`;
+  const newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
   f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
@@ -428,9 +466,9 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     }
     variables.addDecl(d.name, newTyp);
   }) 
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName+"$"));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
-    tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
+    tcNestedFuncDef(nestF, variables, functions, classes, newName+"$")).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
   const nonlocalVars: IdVar<Type>[] = [];
   variables.getCurScope().forEach((typ, v) => {
@@ -499,9 +537,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     throw new TypeError(`All path in this function/method ` +
       `must have a return statement: ${f.name}`);
   }
-  let newName = f.name;
-  if (namePrefix)
-    newName = `${namePrefix}$${f.name}`;
+  let newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
   f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
@@ -517,9 +553,9 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     // only global allowed, no type change, no ref in typ.
     variables.addDecl(d.name, typ );
   })
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName + "$"));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
-    tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
+    tcNestedFuncDef(nestF, variables, functions, classes, newName + "$")).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
   newVarDefs.forEach(v => {
     let refed = false;
@@ -574,7 +610,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
     });
   }
 
-  const newFields = c.fields.map(v => tcVarDef(v, variables, classes));
+  const newFields = c.fields.map(v => tcVarDef(v, variables, classes, c.name + "$"));
 
   const newMethods = c.methods.map(m => {
     if (m.params.length < 1 || 
@@ -599,7 +635,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
       }
     }
     functions.addDecl(m.name, new OneFun<Type>(m.name, m.params.map(p => p.typ), m.ret, []));
-    return tcFuncDef(m, variables, functions, classes, c.name);
+    return tcFuncDef(m, variables, functions, classes, c.name + "$");
   }).flat();
 
   classes.addDecl(c.name, { 
@@ -678,7 +714,7 @@ export function processCls(clsdefs: ClsDef<any>[], variables: BodyEnv,
   return newClsDefs;
 }
 
-export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): VarDef<Type> {
+export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, namePrefix:string = ""): VarDef<Type> {
   const rhs = tcLit(s.init);
   const rhsTyp = getTypeStr(rhs.a);
   const varTypName = getTypeStr(s.typedvar.typ);
@@ -687,6 +723,13 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): Var
     if (!isTypeEqual(s.typedvar.typ, rhs.a)) {
       throw new TypeError(`Expect type '${varTypName}'; ` +
         `got type '${rhs.a}'`);
+    }
+    if (s.init.tag === "string") {
+      const newName = namePrefix + s.typedvar.name;
+      globalStrs.set(newName, { 
+        typedvar: { ...s.typedvar, name: newName  }, 
+        init: rhs 
+      });
     }
   } 
   else {
@@ -700,7 +743,6 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): Var
         `got type '${rhsTyp}'`);
     }
   } 
-
   return { ...s, init: rhs };
 }
 
@@ -709,6 +751,7 @@ export function tcProgram(p: Program<any>): Program<Type> {
   const variables = new Env<Type>();
   const functions = new Env<OneFun<Type>>();
   const classes = new Env<OneClass<Type>>();
+  globalStrs.clear();
 
   p.fundefs.forEach(s => {
     functions.addDecl(s.name, new OneFun<Type>(s.name, s.params.map(p => p.typ), s.ret, []));
@@ -719,7 +762,7 @@ export function tcProgram(p: Program<any>): Program<Type> {
     classes.addDecl(c.name, undefined);
   })
   
-  const vardefs = p.vardefs.map(s => tcVarDef(s, variables, classes));
+  let vardefs = p.vardefs.map(s => tcVarDef(s, variables, classes));
   const clsdefs = processCls(p.clsdefs, variables, functions, classes);
   const fundefs = p.fundefs.map(s => tcFuncDef(s, variables, functions, classes)).flat();
   
@@ -728,6 +771,12 @@ export function tcProgram(p: Program<any>): Program<Type> {
     const res = tcStmt(s, variables, functions, classes, {tag: "none"});
     return res;
   });
+
+  globalStrs.forEach((value, name) => {
+    const [found] = variables.lookUpVar(name);
+    if (!found)
+      vardefs.push(value);
+  })
 
   return { ...p, vardefs, fundefs, clsdefs, stmts };
 }

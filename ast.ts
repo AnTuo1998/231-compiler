@@ -28,11 +28,14 @@ export type Type =
   | { tag: "int", ref?: boolean, refed?: boolean}
   | { tag: "bool", ref?: boolean, refed?: boolean}
   | { tag: "none", ref?: boolean, refed?: boolean }
+  | { tag: "string", ref?: boolean, refed?: boolean }
+  | { tag: "list", type: Type, ref?: boolean, refed?: boolean }
   | ObjType
 
 export type Literal<A> = 
   | { a?: A, tag: "number", value: number }
   | { a?: A, tag: "bool", value: boolean }
+  | { a?: A, tag: "string", value: string }
   | { a?: A, tag: "none" }
 
 
@@ -42,12 +45,16 @@ export type CondBody<A> =
 export type MemberExpr<A> = 
   { a?: A, tag: "getfield", obj: Expr<A>, field: string }
 
+export type IndexExpr<A> = 
+  | { a?: A, tag: "index", obj: Expr<A>, idx: Expr<A> }
+
 export type IdVar<A> = 
   | { a?: A, tag: "id", name: string, global?: boolean }
 
 export type LValue<A> = 
   | IdVar<A>
   | MemberExpr<A>
+  | IndexExpr<A>
 
 export type Stmt<A> =
   | { a?: A, tag: "assign", target: LValue<A>, value: Expr<A>, typ?: Type }
@@ -62,10 +69,12 @@ export type Expr<A> =
   | { a?: A, tag: "literal", value: Literal<A> }
   | { a?: A, tag: "binop", op: BinOp, lhs: Expr<A>, rhs: Expr<A> }
   | { a?: A, tag: "unop", op: UnOp, expr: Expr<A> }
-  | IdVar<A>
   | { a?: A, tag: "call", name: string, args: Expr<A>[] }
-  | MemberExpr<A>
   | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[]}
+  | { a?: A, tag: "array", eles: Expr<A>[] }
+  | IndexExpr<A>
+  | IdVar<A>
+  | MemberExpr<A>
 
 
 const binops = {
@@ -115,7 +124,7 @@ export function getTypeStr(typ: Type): string {
 }
 
 export function isSimpleType(maybeTyp: Type): boolean {
-  return (maybeTyp.tag === "int") || (maybeTyp.tag === "bool") || (maybeTyp.tag === "none");
+  return (maybeTyp.tag === "int") || (maybeTyp.tag === "bool") || (maybeTyp.tag === "none") || (maybeTyp.tag === "string");
 }
 
 export function isCls(maybeCls: Type): maybeCls is ObjType {
@@ -126,6 +135,10 @@ export function isCls(maybeCls: Type): maybeCls is ObjType {
 export function isRefType(maybeTyp: Type): boolean {
   return maybeTyp.ref !== undefined;
   // return "class" in (maybeCls as ObjType);
+}
+
+export function isIndexable(a: Type) {
+  return a.tag === "string" || a.tag === "list"
 }
 
 export const keywords = new Set<string>([
