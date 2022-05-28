@@ -442,7 +442,8 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     throw new TypeError(`All path in this function/method ` +
       `must have a return statement: ${f.name}`);
   }
-  const newName = `${namePrefix}$${f.name}`;
+  // const newName = `${namePrefix}$${f.name}`;
+  const newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
   f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
@@ -465,9 +466,9 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     }
     variables.addDecl(d.name, newTyp);
   }) 
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName+"$"));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
-    tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
+    tcNestedFuncDef(nestF, variables, functions, classes, newName+"$")).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
   const nonlocalVars: IdVar<Type>[] = [];
   variables.getCurScope().forEach((typ, v) => {
@@ -536,7 +537,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     throw new TypeError(`All path in this function/method ` +
       `must have a return statement: ${f.name}`);
   }
-  let newName = [namePrefix, f.name].join("$");
+  let newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
   f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
@@ -552,9 +553,9 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     // only global allowed, no type change, no ref in typ.
     variables.addDecl(d.name, typ );
   })
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName + "$"));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
-    tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
+    tcNestedFuncDef(nestF, variables, functions, classes, newName + "$")).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
   newVarDefs.forEach(v => {
     let refed = false;
@@ -609,7 +610,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
     });
   }
 
-  const newFields = c.fields.map(v => tcVarDef(v, variables, classes, c.name));
+  const newFields = c.fields.map(v => tcVarDef(v, variables, classes, c.name + "$"));
 
   const newMethods = c.methods.map(m => {
     if (m.params.length < 1 || 
@@ -634,7 +635,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
       }
     }
     functions.addDecl(m.name, new OneFun<Type>(m.name, m.params.map(p => p.typ), m.ret, []));
-    return tcFuncDef(m, variables, functions, classes, c.name);
+    return tcFuncDef(m, variables, functions, classes, c.name + "$");
   }).flat();
 
   classes.addDecl(c.name, { 
@@ -724,7 +725,7 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, name
         `got type '${rhs.a}'`);
     }
     if (s.init.tag === "string") {
-      globalStrs.set([namePrefix, s.typedvar.name].join("$"), s.init.value);
+      globalStrs.set(namePrefix + s.typedvar.name, s.init.value);
     }
   } 
   else {
@@ -746,6 +747,7 @@ export function tcProgram(p: Program<any>): Program<Type> {
   const variables = new Env<Type>();
   const functions = new Env<OneFun<Type>>();
   const classes = new Env<OneClass<Type>>();
+  globalStrs.clear();
 
   p.fundefs.forEach(s => {
     functions.addDecl(s.name, new OneFun<Type>(s.name, s.params.map(p => p.typ), s.ret, []));

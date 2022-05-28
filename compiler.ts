@@ -194,7 +194,7 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         clsdef.fields.map((f, i) => {
           let litStmt:string[];
           if (f.init.tag === "string") {
-            litStmt = [`global.get ${cls.name}$${f.typedvar.name}`];
+            litStmt = [`global.get $${clsdef.name}$${f.typedvar.name}`];
           } else {
             litStmt = codeGenLit(f.init);
           }
@@ -412,7 +412,9 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
 
   const varAssign = f.body.vardefs.map(v => {
     if (v.init.tag === "string") {
-      return `global.get ${f.name}$${v.typedvar.name}`;
+      // console.log(withParamsAndVariables);
+      return [addIndent(`(global.get $${f.name}$${v.typedvar.name})`, indent + 1),
+      addIndent(`(local.set $${v.typedvar.name})`, indent + 1)].join("\n");
     } else {
       return codeGenVars(v, withParamsAndVariables, indent + 1);
     }
@@ -433,7 +435,6 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
 
 export function codeGenVars(v: VarDef<Type>, locals: Env, indent: number): string {
   var valStmts: Array<string> = codeGenLit(v.init).flat();
-  // valStmts = valStmts.concat();
   if (locals.has(v.typedvar.name)) {
     if (v.typedvar.typ.refed) {
       // put on the heap
@@ -505,7 +506,7 @@ export function codeGenTable(classes: ClsDef<Type>[], clsEnv: ClsEnv, indent: nu
 
 export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   const varSelf = [];
-  for (let i = 0; i <= selfVarMax; i++) {
+  for (let i = 0; i < selfVarMax; i++) {
     varSelf.push(addIndent(`(global $self${i} (mut i32) (i32.const 0))`, indent));
   }
   var varUser = vars.map(v => addIndent(`(global $${v} (mut i32) (i32.const 0))`, 1));
@@ -523,13 +524,13 @@ export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
 }
 
 
-// export function codeGenGlobalStrs(gStrs: Map<string, string>, indent: number = 1): string[] {
-//   const stmts:string[] = [];
-//   gStrs.forEach((value, name) => {
-//     stmts.push(...codeGenStrLit(value), `(global.set ${name})`)
-//   })
-//   return stmts.map(s => addIndent(s, indent));
-// }
+export function codeGenGlobalStrs(gStrs: Map<string, string>, indent: number = 1): string[] {
+  const stmts:string[] = [];
+  gStrs.forEach((value, name) => {
+    stmts.push(...codeGenStrLit(value), `(global.set $${name})`)
+  })
+  return stmts.map(s => addIndent(s, indent + 1));
+}
 
 export function compile(source: string): string {
   let ast = parseProgram(source);
@@ -553,8 +554,8 @@ export function compile(source: string): string {
     // `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
-  // const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
-  const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
+  const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
+  const main = [`(local $scratch i32)`, ...globalStrsStmts, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];
   const isExpr = (lastStmt && lastStmt.tag === "expr");
