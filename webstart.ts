@@ -1,6 +1,5 @@
 import {compile, run} from './compiler';
 
-
 document.addEventListener("DOMContentLoaded", async () => {
   function display(arg : string) {
     const elt = document.createElement("pre");
@@ -9,7 +8,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // const out = document.getElementById("output");
     // out.innerText += arg + "\n";
   }
-  var importObject = {
+
+  var importObject:any = {
     imports: {
       print_num: (arg : any) => {
         console.log("Logging from WASM: ", arg);
@@ -22,6 +22,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         // return arg;
       },
       print_none: (arg: any) => {
+        display("None");
+        // return arg;
+      },
+      print_string: (arg: any) => {
         display("None");
         // return arg;
       },
@@ -44,6 +48,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
     },
   };
+  const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+  importObject.js = { memory };
   const runButton = document.getElementById("run");
   const userCode = document.getElementById("user-code") as HTMLTextAreaElement;
   runButton.addEventListener("click", async () => {

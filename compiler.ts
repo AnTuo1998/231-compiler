@@ -62,8 +62,6 @@ export async function run(watSource: string, config: any): Promise<any> {
   }
   const parsed = wabtApi.parseWat("example", watSource);
   const binary = parsed.toBinary({});
-  var memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
-  config = { ...config, env: { memory: memory } };
   const wasmModule = await WebAssembly.instantiate(binary.buffer, config);
   return (wasmModule.instance.exports as any)._start();
 }
@@ -142,6 +140,17 @@ export function codeGenArgs(args: Expr<Type>[], locals: Env, clsEnv: ClsEnv): Ar
   }).flat();
 }
 
+export function codeGenMemberExpr(expr: MemberExpr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
+  const objStmt = codeGenExpr(expr.obj, locals, clsEnv);
+  const [cls, tableIdx] = clsEnv.get(getTypeStr(expr.obj.a));
+
+  objStmt.push(
+    `(call $check_init)`,
+    `(i32.add (i32.const ${cls.indexOfField.get(expr.field) * 4 + 4}))`
+  );
+  return objStmt;
+}
+
 export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
   switch (expr.tag) {
     case "literal":
@@ -169,7 +178,6 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         case "not": return ["(i32.const 1)", ...unaryStmts, "(i32.sub)"];
       }
     case "call":
-      // var valStmts = expr.args.map(e => codeGenExpr(e, locals, clsEnv)).flat();
       var valStmts = codeGenArgs(expr.args, locals, clsEnv);
       let toCall = expr.name;
       if (clsEnv.has(expr.name)) { // this is an object constructor
@@ -215,6 +223,7 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
           case "bool": toCall = "print_bool"; break;
           case "int": toCall = "print_num"; break;
           case "none": toCall = "print_none"; break;
+          case "string": toCall = "print_string"; break;
         }
         if (arg.tag === "id" && locals.get(arg.name))
           valStmts.push(`(i32.load)`);
@@ -245,17 +254,6 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         `(call_indirect (type ${cls.ptrOfMethod.get(expr.name)}$type))`
       ];
     }
-}
-
-export function codeGenMemberExpr(expr: MemberExpr<Type>, locals: Env, clsEnv: ClsEnv): Array<string> {
-  const objStmt = codeGenExpr(expr.obj, locals, clsEnv);
-  const [cls, tableIdx] = clsEnv.get(getTypeStr(expr.obj.a));
-  
-  objStmt.push(
-    `(call $check_init)`,
-    `(i32.add (i32.const ${cls.indexOfField.get(expr.field) * 4 + 4}))`
-  );
-  return objStmt;
 }
 
 export function codeGenCondBody(condbody: CondBody<Type>, locals: Env, clsEnv: ClsEnv, indent: number, tag = "if"): Array<string> {
@@ -685,10 +683,11 @@ export function compile(source: string): string {
   }
 
   return `(module
-  (import "env" "memory" (memory $0 1))
+  (import "js" "memory" (memory $0 1))
   (func $print_num (import "imports" "print_num") (param i32) (result i32))
   (func $print_bool (import "imports" "print_bool") (param i32) (result i32))
   (func $print_none (import "imports" "print_none") (param i32) (result i32))
+  (func $print_string (import "imports" "print_string") (param i32) (result i32))
   (func $check_init (import "check" "check_init") (param i32) (result i32))
   (func $check_index (import "check" "check_index") (param i32) (param i32) (result i32))
   (func $abs(import "imports" "abs") (param i32) (result i32))

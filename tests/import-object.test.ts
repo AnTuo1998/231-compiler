@@ -1,5 +1,6 @@
+import { readFileSync } from "fs";
 
-enum Type { Num, Bool, None }
+enum Type { Num, Bool, None, String }
 
 function stringify(typ: Type, arg: any): string {
   switch (typ) {
@@ -18,7 +19,31 @@ function print(typ: Type, arg: any): any {
   return arg;
 }
 
-export const importObject = {
+export async function addLibs() {
+  const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+  // const bytes = readFileSync("stdlib/memory.wasm");
+  // const memoryModule = await WebAssembly.instantiate(bytes, { js: { mem: memory } })
+  // importObject.libmemory = memoryModule.instance.exports;
+  // importObject.memory_values = memory;
+  importObject.js = { memory };
+  importObject.check = {
+      check_init: (arg: any) => {
+        if (arg <= 0) {
+          throw new Error("RUNTIME ERROR: object not intialized");
+        }
+        return arg;
+      },
+      check_index: (length: any, arg: any) => {
+        if (arg >= length || arg < 0) {
+          throw new Error("RUNTIME ERROR: Index out of bounds");
+        }
+        return arg;
+      },
+  };
+  return importObject;
+}
+
+export const importObject:any = {
   imports: {
     // we typically define print to mean logging to the console. To make testing
     // the compiler easier, we define print so it logs to a string object.
@@ -28,6 +53,7 @@ export const importObject = {
     print_num: (arg: number) => print(Type.Num, arg),
     print_bool: (arg: number) => print(Type.Bool, arg),
     print_none: (arg: number) => print(Type.None, arg),
+    print_string: (arg: number) => print(Type.String, arg),
     abs: Math.abs,
     min: Math.min,
     max: Math.max,

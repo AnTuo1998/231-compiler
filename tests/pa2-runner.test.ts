@@ -1,48 +1,13 @@
 import { compile, run } from '../compiler';
 import { expect } from 'chai';
 import 'mocha';
+import { addLibs, importObject } from './import-object.test';
 
-function runTest(source: string) {
+async function runTest(source: string) {
+    let importObject = await addLibs();
     return run(compile(source), importObject);
 }
 
-const importObject = {
-    imports: {
-        // we typically define print to mean logging to the console. To make testing
-        // the compiler easier, we define print so it logs to a string object.
-        //  We can then examine output to see what would have been printed in the
-        //  console.
-        print_num: (arg: any) => {
-            importObject.output += arg + "\n";
-        },
-        print_bool: (arg: any) => {
-            if (arg !== 0) { importObject.output += "True"; }
-            else { importObject.output += "False"; }
-            importObject.output += "\n";
-        },
-        print_none: (arg: any) => {
-            importObject.output += "None\n";
-        },
-        abs: Math.abs,
-        min: Math.min,
-        max: Math.max,
-        pow: Math.pow,
-    },
-    check: {
-        check_init: (arg: any) => {
-            if (arg <= 0)
-                throw new Error("RUNTIME ERROR: object not intialized");
-            return arg;
-        },
-        check_index: (length: any, arg: any) => {
-            if (arg >= length || arg < 0) {
-                throw new Error("RUNTIME ERROR: Index out of bounds");
-            }
-            return arg;
-        },
-    },
-    output: ""
-};
 
 // Clear the output before every test
 beforeEach(function () {
