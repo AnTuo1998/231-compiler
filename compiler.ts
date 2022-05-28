@@ -8,11 +8,29 @@ type ClsEnv = Map<string, [ClsDef<Type>, number]>;
 let wabtApi: any = null;
 let selfVar = 0;
 let selfVarMax = 0;
-
+let leftParen = /(\()/g;
+let rightParen = /(\))/g;
 
 function addIndent(s: string, indent: number = 0): string {
   return "  ".repeat(indent) + s;
 }
+
+function addBlockIndent(block: string[], indent: number = 0): string[] {
+  return block.map(s => {
+    const newS = addIndent(s, indent);
+    if (s.startsWith("(block") || s.startsWith("(func") || s.startsWith("(loop")) {
+      indent += 1;
+    } else if(s.startsWith(")")) {
+      indent -= 1
+    } 
+    // else {
+    //   indent += [...s.match(leftParen)].length - [...s.match(rightParen)].length;
+    // }
+    return newS
+  })
+}
+
+
 
 function variableNames(vardefs: VarDef<Type>[]): string[] {
   const vars: Array<string> = [];
@@ -444,6 +462,141 @@ export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   return [...varSelf, ...varUser];
 }
 
+export function builtinGen(indent:number = 1): string[] {
+  // concat_list_string
+  const copy_list_string = addBlockIndent([
+    `(func $copy_list_string (param $src i32) (param $addr i32)`,
+    `(local $i i32)`,
+    `(local $len i32)`,
+    `(local.get $src)`,
+    `(i32.load)`,
+    `(local.set $len)`,
+    `(local.set $i (i32.const 0))`,
+    `(block`,
+            `(loop`,
+                `(br_if 1 (i32.eq (local.get $i) (local.get $len)))`,
+                `(i32.mul (local.get $i) (i32.const 4))`,
+                `(i32.add (local.get $addr))`,
+                `(i32.mul (local.get $i) (i32.const 4))`,
+                `(i32.add (i32.const 4))`,
+                `(i32.add (local.get $src))`,
+                `(i32.load)`,
+                `(i32.store)`,
+                `(local.set $i (i32.add (local.get $i) (i32.const 1)))`,
+                `(br 0)`,
+            `)`,
+        `)`,
+    `)`
+  ]);
+  const concat_list_string = addBlockIndent([
+    `(func $concat_list_string (param i32) (param i32) (result i32)`,
+    `(global.get $heap)`,
+    `(local.get 0)`,
+    `(call $check_init)`,
+    `(i32.load)`,
+    `(local.get 1)`,
+    `(call $check_init)`,
+    `(i32.load)`,
+    `(i32.add)`,
+    `(i32.store) ;; store new length`,
+    `(local.get 0)`,
+    `(i32.add (global.get $heap) (i32.const 4))`,
+    `(call $copy_list_string)`,
+    `(local.get 1)`,
+    `(i32.load (local.get 0))`,
+    `(i32.mul (i32.const 4))`,
+    `(i32.add (i32.const 4))`,
+    `(i32.add (global.get $heap))`,
+    `(call $copy_list_string)`,
+    `(global.get $heap) ;; return addr`,
+    `(global.get $heap)`,
+    `(i32.load (global.get $heap))`,
+    `(i32.mul (i32.const 4))`,
+    `(i32.add (i32.const 4))`,
+    `(i32.add)`,
+    `(global.set $heap)`,
+    `)`
+  ]);
+  // const print_string = addBlockIndent([
+  //   `(func $print_string (param $addr i32) (result i32)`,
+  //   `(local $i i32)`,
+  //   `(local $len i32)`,
+  //   `(local $lf i32)`,
+  //   `(local $char_to_print i32)`,
+  //   `(local.get $addr)`,
+  //   `(i32.load)`,
+  //   `(local.set $len)`,
+  //   `(local.set $i (i32.const 0))`,
+  //   ...`(block
+  //           (loop
+  //               (br_if 1 (i32.eq (local.get $i) (local.get $len)))
+  //               (i32.add (local.get $i) (i32.const 1))
+  //               (i32.mul (i32.const 4))
+  //               (i32.add (local.get $addr))
+  //               (i32.load)
+  //               (local.set $char_to_print)
+  //               (if (i32.eq (local.get $i) (i32.sub (local.get $len) (i32.const 1)))
+  //                   (then
+  //                       (local.set $lf (i32.const 1))
+  //                   )
+  //                   (else
+  //                       (local.set $lf (i32.const 0))
+  //                   )
+  //               )
+  //               (local.get $char_to_print)
+  //               (local.get $lf)
+  //               (call $print_char)
+  //               (local.set $i (i32.add (local.get $i) (i32.const 1)))
+  //               (br 0)
+  //           )
+  //       )`.split("\n"),
+  //   `(local.get $len)`,
+  //   `)`
+  // ]);
+  const get_string_index = addBlockIndent([
+    `(func $get_string_index (param $addr i32) (param $idx i32) (result i32)`,
+    `(local $val i32)`,
+    `(local.get $addr)`,
+    `(i32.add (i32.const 4))`,
+    `(local.get $addr)`,
+    // DSC TODO: check init , now memory error
+    `(call $check_init)`,
+    `(i32.load) ;; load the length of the list`,
+    `(local.get $idx)`,
+    `(call $check_index)`,
+    `(i32.mul (i32.const 4))`,
+    `(i32.add)`,
+    `(i32.load)`,
+    `(local.set $val) ;; put the value here`,
+    `(global.get $heap)`,
+    `(i32.const 1)`,
+    `(i32.store)`,
+    `(global.get $heap)`,
+    `(i32.add (i32.const 4))`,
+    `(local.get $val)`,
+    `(i32.store)`,
+    `(global.get $heap) ;; addr of the string`,
+    `(global.get $heap)`,
+    `(i32.add (i32.const 8))`,
+    `(global.set $heap)`,
+    `)`
+  ]);
+  const get_list_index = addBlockIndent([
+    `(func $get_list_index (param $addr i32) (param $idx i32) (result i32)`,
+    `(local.get $addr)`,
+    `(call $check_init)`,
+    `(i32.load) ;; load the length of the list`,
+    `(local.get $idx)`,
+    `(call $check_index)`,
+    `(i32.mul (i32.const 4))`,
+    `(i32.add (i32.const 4))`,
+    `(i32.add (local.get $addr))`,
+    `(i32.load)`,
+    `)`
+  ]);
+  return [...copy_list_string, ...concat_list_string, ...get_string_index, ...get_list_index];
+}
+
 export function compile(source: string): string {
   let ast = parseProgram(source);
   ast = tcProgram(ast);
@@ -452,6 +605,7 @@ export function compile(source: string): string {
   const clsEnv = new Map<string, [ClsDef<Type>, number]>();
   const [vars, funs, classes, stmts] = varsFunsStmts(ast);
   // classes.map(c => clsEnv.set(c.name, c)); //move into table
+  const builtinCode = builtinGen(basicIndent).join("\n");
   const tableStmts = codeGenTable(classes, clsEnv, basicIndent).join("\n");
   const clsCode: string[] = classes.map(c => codeGenCls(c, emptyEnv, clsEnv, basicIndent)).map(f => f.join("\n"));
   const allCls = clsCode.join("\n\n");
@@ -483,12 +637,14 @@ export function compile(source: string): string {
   (func $print_bool (import "imports" "print_bool") (param i32) (result i32))
   (func $print_none (import "imports" "print_none") (param i32) (result i32))
   (func $check_init (import "check" "check_init") (param i32) (result i32))
+  (func $check_index (import "check" "check_index") (param i32) (param i32) (result i32))
   (func $abs(import "imports" "abs") (param i32) (result i32))
   (func $min(import "imports" "min") (param i32) (param i32) (result i32))
   (func $max(import "imports" "max") (param i32) (param i32) (result i32))
   (func $pow(import "imports" "pow") (param i32) (param i32) (result i32))
   ${tableStmts}
   ${varCode}
+  ${builtinCode}
   ${allFuns}
   ${allCls}
   

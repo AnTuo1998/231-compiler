@@ -36,6 +36,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           throw new Error("RUNTIME ERROR: object not intialized");
         return arg;
       },
+      check_index: (length: any, arg: any) => {
+        if (arg >= length || arg < 0) {
+          throw new Error("RUNTIME ERROR: Index out of bounds");
+        }
+        return arg;
+      },
     },
   };
   const runButton = document.getElementById("run");
