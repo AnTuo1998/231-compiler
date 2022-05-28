@@ -3,7 +3,7 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar } from "./ast";
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable } from "./ast";
 import { isTypeEqual, isCls, getTypeStr, isAssignable } from "./ast"
 import { TypeError } from "./error"
 
@@ -108,6 +108,8 @@ class OneFun<T> {
     this.nonlocal = nonlocal;
   }
 }
+
+const globalStrs = new Map<string, VarDef<Type>>();
 
 export function isRefType(maybeTyp: OneVar<Type>): boolean {
   return maybeTyp.ref !== undefined;

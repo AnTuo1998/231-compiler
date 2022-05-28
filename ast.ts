@@ -28,6 +28,8 @@ export type Type =
   | { tag: "int" }
   | { tag: "bool" }
   | { tag: "none" }
+  | { tag: "string" }
+  | { tag: "list", type:Type }
   | ObjType
 
 export type Literal<A> = 
