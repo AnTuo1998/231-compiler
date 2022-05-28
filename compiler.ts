@@ -1,6 +1,6 @@
 import { StringifyOptions } from 'querystring';
 import wabt from 'wabt';
-import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, isRefType, TypedVar } from "./ast";
+import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, TypedVar } from "./ast";
 import { parseProgram } from './parser';
 import { tcProgram } from './tc';
 
@@ -374,10 +374,10 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
   | as arg     |                      directly local.get                               |    global.get    |  
   |-------------------------------------------------------------------------------------------------------|
  */
-  // const variables = variableNames(f.body.vardefs);
-  f.body.vardefs.forEach(v => withParamsAndVariables.set(v.typedvar.name, v.typedvar.typ.refed));
+  const variables = variableNames(f.body.vardefs);
+  f.body.vardefs.forEach(v => withParamsAndVariables.set(v.typedvar.name, v.typedvar.refed));
   f.params.forEach(p => {
-    let flag = isRefType(p.typ) ? p.typ.ref : p.typ.refed;
+    let flag = p.ref ? p.ref : p.refed;
     withParamsAndVariables.set(p.name, flag);
   });
 
@@ -385,7 +385,7 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
   let params = f.params.map(p => `(param $${p.name} i32)`).join(" ");
   const paramWrap = f.params.map(p => {
     const paramStmt = [];
-    if (!p.typ.ref && p.typ.refed) {
+    if (!p.ref && p.refed) {
       paramStmt.push(
         `(global.get $heap)`, 
         `(local.get $${p.name})`, 
@@ -431,7 +431,7 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
 export function codeGenVars(v: VarDef<Type>, locals: Env, indent: number): string {
   var valStmts: Array<string> = codeGenLit(v.init).flat();
   if (locals.has(v.typedvar.name)) {
-    if (v.typedvar.typ.refed) {
+    if (v.typedvar.refed) {
       // put on the heap
       valStmts.unshift(`(global.get $heap)`)
       valStmts.push(
