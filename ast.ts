@@ -11,7 +11,7 @@ export type FuncBody<A> =
   { vardefs: VarDef<A>[], fundefs?: FunDef<A>[], decls?: ScopeVar<A>[], stmts: Stmt<A>[] }
 
 export type TypedVar =
-  | { name: string, typ: Type }
+  | { name: string, typ: Type, ref?: boolean, refed?: boolean }
 
 export type ScopeVar<A> = 
   | { a?:A, name: string, nonlocal: boolean };
@@ -23,13 +23,11 @@ export type ClsDef<A> =
     indexOfMethod?: Map<string, number>, 
     ptrOfMethod?: Map<string, string> }
 
-export type ObjType = { tag: "object", class: string, ref?: boolean, refed?: boolean }
+export type ObjType = { tag: "object", class: string }
 export type Type =
-  | { tag: "int", ref?: boolean, refed?: boolean}
-  | { tag: "bool", ref?: boolean, refed?: boolean}
-  | { tag: "none", ref?: boolean, refed?: boolean }
-  | { tag: "string", ref?: boolean, refed?: boolean }
-  | { tag: "list", type: Type, ref?: boolean, refed?: boolean }
+  | { tag: "int" }
+  | { tag: "bool" }
+  | { tag: "none" }
   | ObjType
 
 export type Literal<A> = 
@@ -132,10 +130,6 @@ export function isCls(maybeCls: Type): maybeCls is ObjType {
   // return "class" in (maybeCls as ObjType);
 }
 
-export function isRefType(maybeTyp: Type): boolean {
-  return maybeTyp.ref !== undefined;
-  // return "class" in (maybeCls as ObjType);
-}
 
 export function isIndexable(a: Type) {
   return a.tag === "string" || a.tag === "list"

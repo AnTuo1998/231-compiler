@@ -3,12 +3,12 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { isTypeEqual, isCls, getTypeStr, isAssignable, isRefType, isIndexable } from "./ast"
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, IndexExpr, ScopeVar, IdVar, LValue } from "./ast";
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar } from "./ast";
+import { isTypeEqual, isCls, getTypeStr, isAssignable } from "./ast"
 import { TypeError } from "./error"
 
 type FunctionsEnv = Env<OneFun<Type>>;
-type BodyEnv = Env<Type>;
+type BodyEnv = Env<OneVar<Type>>;
 // type Class
 type ClassEnv = Env<OneClass<Type>>;
 
@@ -77,13 +77,21 @@ class Env<T> {
   }
 }
 
+class OneVar<T> {
+  typ: T;
+  ref?: boolean;
+  constructor(typ: T, ref:boolean = undefined) {
+    this.typ = typ;
+    this.ref = ref;
+  }
+}
 class OneClass<T> {
-  vars: Map<string, T>;
-  funs: Map<string, OneFun<Type>>;
+  vars: Map<string, OneVar<T>>;
+  funs: Map<string, OneFun<T>>;
   super: ObjType = null;
   constructor() {
-    this.vars = new Map<string, T>();
-    this.funs = new Map<string, OneFun<Type>>();
+    this.vars = new Map<string, OneVar<T>>();
+    this.funs = new Map<string, OneFun<T>>();
     this.super = null;
   }
 }
@@ -92,8 +100,8 @@ class OneFun<T> {
   name: string;
   params: T[];
   ret: T;
-  nonlocal: IdVar<T>[];
-  constructor(name: string, params: T[], ret: T, nonlocal: IdVar<T>[] = null) {
+  nonlocal: TypedVar[];
+  constructor(name: string, params: T[], ret: T, nonlocal: TypedVar[] = null) {
     this.name = name;
     this.params = params;
     this.ret = ret;
@@ -101,7 +109,9 @@ class OneFun<T> {
   }
 }
 
-const globalStrs = new Map<string, VarDef<Type>>();
+export function isRefType(maybeTyp: OneVar<Type>): boolean {
+  return maybeTyp.ref !== undefined;
+}
 
 function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   if (!isCls(superCls) || !isCls(subCls)) {
@@ -147,7 +157,9 @@ export function tcArgs(args: Expr<any>[], funcInfo: OneFun<Type>,
     }
     return argtyp;
   });
-  newArgs = newArgs.concat(funcInfo.nonlocal);
+  newArgs = newArgs.concat(funcInfo.nonlocal.map(nl => {
+    return { a: nl.typ, tag: "id", name: nl.name };
+  }));
   return newArgs;
 }
 
@@ -224,16 +236,16 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       }
     }
     case "id":
-      var [found, typ] = variables.lookUpVar(e.name, SearchScope.LOCAL_AND_GLOBAL);
+      var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.LOCAL_AND_GLOBAL);
       if (found) {
-        return { ...e, a: typ };
+        return { ...e, a: varInfo.typ };
       }
-      var [found, typ] = variables.lookUpVar(e.name, SearchScope.NONLOCAL);
+      var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.NONLOCAL);
       if (!found) {
         throw new ReferenceError(`Not a variable: ${e.name}`);
       }
-      variables.addDecl(e.name, { ...typ, ref: false });
-      return { ...e, a: { ...typ, ref: false } };
+      variables.addDecl(e.name, { ...varInfo, ref: false });
+      return { ...e, a: varInfo.typ };
     case "call":{
       let newArgs: Expr<Type>[] = [];
       if (e.name === "print") {
@@ -320,7 +332,7 @@ export function tcMemberExpr(e: MemberExpr<any>, variables: BodyEnv, functions: 
   if (!cls.vars.has(e.field)) {
     throw new Error(`There is no attribute named ${e.field} in class ${typStr}`);
   }
-  return { ...e, a: cls.vars.get(e.field), obj };
+  return { ...e, a: cls.vars.get(e.field).typ, obj };
 }
 
 export function tcIndexExpr(e: IndexExpr<any>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv): IndexExpr<Type> {
@@ -346,7 +358,7 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
     case "assign": {
       const rhs = tcExpr(s.value, variables, functions, classes);
       if (s.target.tag === "id"){
-        const [found, typ] = variables.lookUpVar(s.target.name, SearchScope.LOCAL);
+        const [found, varInfo] = variables.lookUpVar(s.target.name, SearchScope.LOCAL);
         if (!found) {
           const [allFound] = variables.lookUpVar(s.target.name, SearchScope.ALL); // all scopes
           if (allFound)
@@ -354,18 +366,18 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
               `declared in this scope: ${s.target.name}`);
           else
             throw new ReferenceError(`Not a variable: ${s.target}`);
-        } else if (isRefType(typ) && !typ.ref) {
+        } else if (isRefType(varInfo) && !varInfo.ref) {
             throw new Error(`Cannot assign variable that is not explicitly ` +
               `declared in this scope: ${s.target.name}`);
         }
-        if (!assignable(typ, rhs.a, classes)) {
-          throw new TypeError(`Expect type '${getTypeStr(typ)}'; got type '${getTypeStr(rhs.a)}'`);
+        if (!assignable(varInfo.typ, rhs.a, classes)) {
+          throw new TypeError(`Expect type '${getTypeStr(varInfo.typ)}'; got type '${getTypeStr(rhs.a)}'`);
         }
-        if (isCls(typ)) {
+        if (isCls(varInfo.typ)) {
           // TODO: tag initialized for object
         }
 
-        return { ...s, target: {...s.target, a:typ }, value: rhs };
+        return { ...s, target: { ...s.target, a:varInfo.typ }, value: rhs };
       } else if (s.target.tag === "getfield") {
         const target = tcMemberExpr(s.target, variables, functions, classes);
         if (!assignable(target.a, rhs.a, classes)) {
@@ -446,7 +458,7 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
   const newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
-  f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
+  f.params.forEach(p => { variables.addDecl(p.name, { typ: p.typ }) });
   f.body.decls.forEach(d => {
     let [found, typ] = variables.lookUpVar(d.name, SearchScope.GLOBAL);
     // if ((!found && !d.nonlocal) || (found && d.nonlocal)) {
@@ -460,7 +472,7 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
       }
     }
     // TODO: update typ or not
-    let newTyp: Type = typ;
+    let newTyp: OneVar<Type> = typ ;
     if (d.nonlocal) { // global no change
       newTyp = { ...typ, ref: true };
     }
@@ -470,11 +482,11 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
     tcNestedFuncDef(nestF, variables, functions, classes, newName+"$")).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
-  const nonlocalVars: IdVar<Type>[] = [];
+  const nonlocalVars: TypedVar[] = [];
   variables.getCurScope().forEach((typ, v) => {
     if (isRefType(typ)) {
-      nonlocalVars.push({ a: typ, tag: "id", name: v });
-      f.params.push({name:v, typ});
+      nonlocalVars.push({ name:v, ...typ });
+      f.params.push({name:v, ...typ });
     }
   });
   newVarDefs.forEach(v => {
@@ -482,20 +494,21 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     functions.getCurScope().forEach((nestFinfo, nf) => {
       nestFinfo.nonlocal.forEach((nonlocalvar => {
         if (nonlocalvar.name === v.typedvar.name)
-          refed ||= nonlocalvar.a.ref;
+          refed ||= nonlocalvar.ref;
       }));
     });
-    v.typedvar.typ = { ...v.typedvar.typ, refed };
+    v.typedvar.refed = refed;
+    // v.typedvar.typ = { ...v.typedvar.typ, refed };
   });
   f.params.forEach(p => {
     let refed = false;
     functions.getCurScope().forEach((nestFinfo, nf) => {
       nestFinfo.nonlocal.forEach((nonlocalvar => {
         if (nonlocalvar.name === p.name)
-          refed ||= nonlocalvar.a.ref;
+          refed ||= nonlocalvar.ref;
       }));
     });
-    p.typ = { ...p.typ, refed };
+    p.refed =  refed;
   });
   variables.removeScope();
   functions.removeScope();
@@ -507,7 +520,7 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
   nonlocalVars.forEach(v => {
     const [found] = variables.lookUpVar(v.name, SearchScope.LOCAL);
     if (!found)
-      variables.addDecl(v.name, v.a);
+      variables.addDecl(v.name, { typ: v.typ, ref: v.ref} );
   }); // update the upper var scope, incase there are some nonlocal vars from upper upper scope
   newFunDefs.push({ ...f, name: newName, body: { vardefs: newVarDefs, stmts: newStmts } });
   return newFunDefs;
@@ -540,7 +553,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
   let newName = namePrefix + f.name;
   variables.addScope();
   functions.addScope();
-  f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
+  f.params.forEach(p => { variables.addDecl(p.name, { typ: p.typ })});
   f.body.decls.forEach(d => {
     if (d.nonlocal) {
       // no nonlocal vars in the outide function
@@ -562,20 +575,20 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     functions.getCurScope().forEach((nestFinfo, nf) => {
       nestFinfo.nonlocal.forEach((nonlocalvar => {
         if (nonlocalvar.name === v.typedvar.name)
-          refed ||= nonlocalvar.a.ref;
+          refed ||= nonlocalvar.ref;
       }));
     });
-    v.typedvar.typ = { ...v.typedvar.typ, refed };
+    v.typedvar.refed = refed;
   });
   f.params.forEach(p => {
     let refed = false;
     functions.getCurScope().forEach((nestFinfo, nf) => {
       nestFinfo.nonlocal.forEach((nonlocalvar => {
         if (nonlocalvar.name === p.name)
-          refed ||= nonlocalvar.a.ref;
+          refed ||= nonlocalvar.ref;
       }));
     });
-    p.typ = { ...p.typ, refed };
+    p.refed = refed;
   });
   
   variables.removeScope();
@@ -600,7 +613,9 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
     funs: functions.getCurScope(),
     super: { tag: "object", class: c.super }
   });
-  variables.addDecl("self", { tag: "object", class: c.name });
+  // variables.addDecl("self",{ tag: "object", class: c.name } );
+  variables.addDecl("self", new OneVar<Type>({ tag: "object", class: c.name }));
+
   if (found) {
     superClsEnv.vars.forEach((typ, v) => {
       variables.addDecl(v, typ);
@@ -718,7 +733,7 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, name
   const rhs = tcLit(s.init);
   const rhsTyp = getTypeStr(rhs.a);
   const varTypName = getTypeStr(s.typedvar.typ);
-  local.addDecl(s.typedvar.name, s.typedvar.typ); // no redefinition error
+  local.addDecl(s.typedvar.name, new OneVar<Type>(s.typedvar.typ, s.typedvar.ref)); // no redefinition error
   if (!isCls(s.typedvar.typ)) {
     if (!isTypeEqual(s.typedvar.typ, rhs.a)) {
       throw new TypeError(`Expect type '${varTypName}'; ` +
@@ -748,7 +763,7 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, name
 
 
 export function tcProgram(p: Program<any>): Program<Type> {
-  const variables = new Env<Type>();
+  const variables = new Env<OneVar<Type>>();
   const functions = new Env<OneFun<Type>>();
   const classes = new Env<OneClass<Type>>();
   globalStrs.clear();
