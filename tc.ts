@@ -101,6 +101,8 @@ class OneFun<T> {
   }
 }
 
+const globalStrs = new Map<string, string>();
+
 function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   if (!isCls(superCls) || !isCls(subCls)) {
     // sanity check
@@ -121,9 +123,9 @@ export function tcLit(lit: Literal<any>): Literal<Type> {
     case "number":
       return { ...lit, a: { tag: "int" } };
     case "bool":
-      return { ...lit, a: { tag: "bool"} };
     case "none":
-      return { ...lit, a: { tag: "none" } };
+    case "string":
+      return { ...lit, a: { tag: lit.tag } };
   }
 }
 
@@ -162,6 +164,9 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const nRHStyp = getTypeStr(nRHS.a);
       switch (e.op) {
         case "+":
+          if (nLHStyp === "string" && nLHStyp === nRHStyp) {
+            return { ...e, a: { tag: "string" }, lhs: nLHS, rhs: nRHS };
+          }
         case "-":
         case "*":
         case "//":
@@ -428,7 +433,7 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
     }
     variables.addDecl(d.name, newTyp);
   }) 
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
     tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
@@ -499,9 +504,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     throw new TypeError(`All path in this function/method ` +
       `must have a return statement: ${f.name}`);
   }
-  let newName = f.name;
-  if (namePrefix)
-    newName = `${namePrefix}$${f.name}`;
+  let newName = [namePrefix, f.name].join("$");
   variables.addScope();
   functions.addScope();
   f.params.forEach(p => { variables.addDecl(p.name, p.typ) });
@@ -517,7 +520,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
     // only global allowed, no type change, no ref in typ.
     variables.addDecl(d.name, typ );
   })
-  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes));
+  const newVarDefs = f.body.vardefs.map(v => tcVarDef(v, variables, classes, newName));
   const newFunDefs: FunDef<Type>[] = f.body.fundefs.map(nestF => 
     tcNestedFuncDef(nestF, variables, functions, classes, newName)).flat();
   const newStmts = f.body.stmts.map(bs => tcStmt(bs, variables, functions, classes, f.ret));
@@ -574,7 +577,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
     });
   }
 
-  const newFields = c.fields.map(v => tcVarDef(v, variables, classes));
+  const newFields = c.fields.map(v => tcVarDef(v, variables, classes, c.name));
 
   const newMethods = c.methods.map(m => {
     if (m.params.length < 1 || 
@@ -678,7 +681,7 @@ export function processCls(clsdefs: ClsDef<any>[], variables: BodyEnv,
   return newClsDefs;
 }
 
-export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): VarDef<Type> {
+export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, namePrefix:string = ""): VarDef<Type> {
   const rhs = tcLit(s.init);
   const rhsTyp = getTypeStr(rhs.a);
   const varTypName = getTypeStr(s.typedvar.typ);
@@ -687,6 +690,9 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): Var
     if (!isTypeEqual(s.typedvar.typ, rhs.a)) {
       throw new TypeError(`Expect type '${varTypName}'; ` +
         `got type '${rhs.a}'`);
+    }
+    if (s.init.tag === "string") {
+      globalStrs.set([namePrefix, s.typedvar.name].join("$"), s.init.value);
     }
   } 
   else {
@@ -700,7 +706,6 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv): Var
         `got type '${rhsTyp}'`);
     }
   } 
-
   return { ...s, init: rhs };
 }
 
@@ -729,5 +734,5 @@ export function tcProgram(p: Program<any>): Program<Type> {
     return res;
   });
 
-  return { ...p, vardefs, fundefs, clsdefs, stmts };
+  return { ...p, vardefs, fundefs, clsdefs, stmts, string:globalStrs };
 }

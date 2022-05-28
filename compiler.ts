@@ -1,3 +1,4 @@
+import { StringifyOptions } from 'querystring';
 import wabt from 'wabt';
 import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, isRefType, TypedVar } from "./ast";
 import { parseProgram } from './parser';
@@ -32,7 +33,7 @@ function addBlockIndent(block: string[], indent: number = 0): string[] {
 
 
 
-function variableNames(vardefs: VarDef<Type>[]): string[] {
+function variableNames(vardefs: VarDef<Type>[], gStrs: Map<string, string>): string[] {
   const vars: Array<string> = [];
   const var_set = new Set();
 
@@ -42,11 +43,17 @@ function variableNames(vardefs: VarDef<Type>[]): string[] {
       var_set.add(vardef.typedvar.name);
     }
   });
+  gStrs.forEach((v, k) => {
+    if (!var_set.has(k)) {
+      vars.push(k);
+      var_set.add(k);
+    }
+  });
   return vars;
 }
 
 function varsFunsStmts(p: Program<Type>): [string[], FunDef<Type>[], ClsDef<Type>[], Stmt<Type>[]] {
-  return [variableNames(p.vardefs), p.fundefs, p.clsdefs, p.stmts];
+  return [variableNames(p.vardefs, p.string), p.fundefs, p.clsdefs, p.stmts];
 }
 
 export async function run(watSource: string, config: any): Promise<any> {
@@ -90,10 +97,35 @@ export function codeGenLit(lit: Literal<Type>): Array<string> {
       return [`(i32.const 1)`];
     else
       return [`(i32.const 0)`];
-  }
-  else {
+  } else if (lit.tag === "none") {
     return [`(i32.const 0)`];  // none
+  } else if (lit.tag === "string") {
+    return codeGenStrLit(lit.value);  // none
   }
+}
+
+export function codeGenStrLit(value: string): string[] {
+  const stmts: string[] = [];
+  stmts.push(
+    `(global.get $heap)`,
+    `(i32.const ${value.length})`,
+    `(i32.store)`
+  );
+  value.split("").slice().reverse().forEach((c, i) => {
+    stmts.push(
+      `(global.get $heap)`,
+      `(i32.add (i32.mul (i32.const ${i + 1}) (i32.const 4)))`,
+      `(i32.const ${c.charCodeAt(0)})`,
+      `(i32.store)`,
+    )
+  });
+  stmts.push(
+    `(global.get $heap) ;; addr of str`,
+    `(global.get $heap)`,
+    `(i32.add (i32.mul (i32.const ${value.length + 1}) (i32.const 4)))`,
+    `(global.set $heap)`
+  );
+  return stmts;
 }
 
 
@@ -149,10 +181,16 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
           `(i32.store)`
         );
         clsdef.fields.map((f, i) => {
+          let litStmt:string[];
+          if (f.init.tag === "string") {
+            litStmt = [`global.get ${cls.name}$${f.typedvar.name}`];
+          } else {
+            litStmt = codeGenLit(f.init);
+          }
           initstmts.push(
             `(global.get $heap)`,
             `(i32.add (i32.const ${4 * i + 4}))`,
-            codeGenLit(f.init)[0],
+            ...litStmt,
             `(i32.store)`
           );
         });
@@ -326,7 +364,7 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
   | as arg     |                      directly local.get                               |    global.get    |  
   |-------------------------------------------------------------------------------------------------------|
  */
-  const variables = variableNames(f.body.vardefs);
+  // const variables = variableNames(f.body.vardefs);
   f.body.vardefs.forEach(v => withParamsAndVariables.set(v.typedvar.name, v.typedvar.typ.refed));
   f.params.forEach(p => {
     let flag = isRefType(p.typ) ? p.typ.ref : p.typ.refed;
@@ -352,11 +390,17 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
     return paramStmt.map(s => addIndent(s, indent + 1));
   }).flat().join("\n");
 
-  const varDecls = variables.map(v => {
-    return addIndent(`(local $${v} i32)`, indent + 1)
+  const varDecls = f.body.vardefs.map(v => {
+    return addIndent(`(local $${v.typedvar.name} i32)`, indent + 1)
   }).join("\n");
 
-  const varAssign = f.body.vardefs.map(v => codeGenVars(v, withParamsAndVariables, indent + 1)).join("\n");
+  const varAssign = f.body.vardefs.map(v => {
+    if (v.init.tag === "string") {
+      return `global.get ${f.name}$${v.typedvar.name}`;
+    } else {
+      return codeGenVars(v, withParamsAndVariables, indent + 1);
+    }
+  }).join("\n");
 
   const stmts = f.body.stmts.map(s => codeGenStmt(s, withParamsAndVariables, clsEnv, indent + 1)).flat();
 
@@ -461,6 +505,15 @@ export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   // return varUser + varHelper;
   return [...varSelf, ...varUser];
 }
+
+
+// export function codeGenGlobalStrs(gStrs: Map<string, string>, indent: number = 1): string[] {
+//   const stmts:string[] = [];
+//   gStrs.forEach((value, name) => {
+//     stmts.push(...codeGenStrLit(value), `(global.set ${name})`)
+//   })
+//   return stmts.map(s => addIndent(s, indent));
+// }
 
 export function builtinGen(indent:number = 1): string[] {
   // concat_list_string
@@ -605,6 +658,7 @@ export function compile(source: string): string {
   const clsEnv = new Map<string, [ClsDef<Type>, number]>();
   const [vars, funs, classes, stmts] = varsFunsStmts(ast);
   // classes.map(c => clsEnv.set(c.name, c)); //move into table
+  // ast.string.forEach(str => emptyEnv.set(str, true)); // Conflict with local nonlocal
   const builtinCode = builtinGen(basicIndent).join("\n");
   const tableStmts = codeGenTable(classes, clsEnv, basicIndent).join("\n");
   const clsCode: string[] = classes.map(c => codeGenCls(c, emptyEnv, clsEnv, basicIndent)).map(f => f.join("\n"));
@@ -613,13 +667,12 @@ export function compile(source: string): string {
   const allFuns = funsCode.join("\n\n");
   const varAssign = ast.vardefs.map(v => codeGenVars(v, emptyEnv, basicIndent + 1));
   const allStmts = stmts.map(s => codeGenStmt(s, emptyEnv, clsEnv, basicIndent + 1)).flat();
-  // const varDecls = vars.map(v => addIndent(`(global $${v} (mut i32) (i32.const 0))`, basicIndent));
   const varDecls = codeGenAllGlobalVar(vars, basicIndent);
   const varCode = [
     `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
-
+  // const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
   const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];

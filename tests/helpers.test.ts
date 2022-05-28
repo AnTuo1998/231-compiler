@@ -9,7 +9,8 @@ export function typeCheck(source: string) : Type {
   const lastStmt = tcp.stmts[tcp.stmts.length - 1];
   if (lastStmt && lastStmt.tag === "expr") {
     const lastType = lastStmt.expr.a;
-    if (lastType.tag === "int" || lastType.tag === "bool" || lastType.tag === "none") {
+    if (lastType.tag === "int" || lastType.tag === "bool" || 
+      lastType.tag === "none" || lastType.tag === "string") {
       return lastType.tag;
     } else if (lastType.tag === "object") {
       return CLASS(lastType.class);

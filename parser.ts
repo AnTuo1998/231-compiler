@@ -372,6 +372,8 @@ export function traverseType(t: TreeCursor, s: string): Type {
       // return name;
       if (name === "int" || name === "bool" || name === "none") {
         return { tag: name };
+      } else if (name === "str") {
+        return { tag: "string" };
       } else {
         return { tag: "object", class: name };
       }
@@ -423,6 +425,8 @@ export function traverseLit(t: TreeCursor, s: string): Literal<any> {
       return { tag: "number", value: Number(s.substring(t.from, t.to)) };
     case "None":
       return { tag: "none" };
+    case "String":
+      return { tag: "string", value: s.substring(t.from, t.to) };
     default:
       throw new ParseError(`Not a literal: ${t.type.name}`);
   }
@@ -433,6 +437,7 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
     case "Boolean":
     case "Number":
     case "None":
+    case "String":
       return { tag: "literal", value: traverseLit(t, s) };
     case "VariableName":
     case "self":

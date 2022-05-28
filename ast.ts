@@ -1,5 +1,5 @@
 export type Program<A> = 
-  { vardefs: VarDef<A>[], fundefs: FunDef<A>[], clsdefs:ClsDef<A>[], stmts: Stmt<A>[] }
+  { vardefs: VarDef<A>[], fundefs: FunDef<A>[], clsdefs:ClsDef<A>[], stmts: Stmt<A>[], string?: Map<string, string> }
 
 export type VarDef<A> =
   { typedvar: TypedVar, init: Literal<A> };
@@ -28,11 +28,13 @@ export type Type =
   | { tag: "int", ref?: boolean, refed?: boolean}
   | { tag: "bool", ref?: boolean, refed?: boolean}
   | { tag: "none", ref?: boolean, refed?: boolean }
+  | { tag: "string", ref?: boolean, refed?: boolean }
   | ObjType
 
 export type Literal<A> = 
   | { a?: A, tag: "number", value: number }
   | { a?: A, tag: "bool", value: boolean }
+  | { a?: A, tag: "string", value: string }
   | { a?: A, tag: "none" }
 
 
@@ -115,7 +117,7 @@ export function getTypeStr(typ: Type): string {
 }
 
 export function isSimpleType(maybeTyp: Type): boolean {
-  return (maybeTyp.tag === "int") || (maybeTyp.tag === "bool") || (maybeTyp.tag === "none");
+  return (maybeTyp.tag === "int") || (maybeTyp.tag === "bool") || (maybeTyp.tag === "none") || (maybeTyp.tag === "string");
 }
 
 export function isCls(maybeCls: Type): maybeCls is ObjType {
