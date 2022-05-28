@@ -32,26 +32,34 @@ function print(typ: Type, arg: any, mem?: WebAssembly.Memory): any {
 
 const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
 
+const check = {
+  check_init: (arg: any) => {
+    if (arg <= 0) {
+      throw new Error("RUNTIME ERROR: object not intialized");
+    }
+    return arg;
+  },
+  check_index: (length: any, arg: any) => {
+    if (arg >= length || arg < 0) {
+      throw new Error("RUNTIME ERROR: Index out of bounds");
+    }
+    return arg;
+  }
+};
+
 export async function addLibs() {  
   const bytes = readFileSync("build/memory.wasm");
-  const memoryModule = await WebAssembly.instantiate(bytes, { js: { memory: memory } })
+  const memoryModule = await WebAssembly.instantiate(bytes, { js: { memory: memory } });
+
+  const built = readFileSync("build/builtin.wasm");
+  const builtinModule = await WebAssembly.instantiate(built, { check: check, js: { memory: memory } });
+  importObject.builtin = builtinModule.instance.exports;
+
   importObject.libmemory = memoryModule.instance.exports;
   importObject.memory_values = memory;
   importObject.js = { memory };
-  importObject.check = {
-      check_init: (arg: any) => {
-        if (arg <= 0) {
-          throw new Error("RUNTIME ERROR: object not intialized");
-        }
-        return arg;
-      },
-      check_index: (length: any, arg: any) => {
-        if (arg >= length || arg < 0) {
-          throw new Error("RUNTIME ERROR: Index out of bounds");
-        }
-        return arg;
-      },
-  };
+  importObject.check = check;
+
   return importObject;
 }
 

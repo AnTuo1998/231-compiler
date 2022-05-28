@@ -58,7 +58,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     },
   };
   const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+  const memoryModule = await fetch('memory.wasm').then(response =>
+    response.arrayBuffer()
+  ).then(bytes =>
+    WebAssembly.instantiate(bytes, { js: { memory: memory } })
+  );
+  const builtinModule = await fetch('builtin.wasm').then(response =>
+    response.arrayBuffer()
+  ).then(bytes =>
+    WebAssembly.instantiate(bytes, { check: importObject.check, js: { memory: memory } })
+  );
   importObject.js = { memory };
+  importObject.builtin = builtinModule.instance.exports;
+  importObject.libmemory = memoryModule.instance.exports;
   const runButton = document.getElementById("run");
   const userCode = document.getElementById("user-code") as HTMLTextAreaElement;
   runButton.addEventListener("click", async () => {

@@ -1,5 +1,5 @@
 (module
-  ;;(memory (import "js" "memery") 1)
+  ;;(memory (import "js" "memory") 1)
   (import "js" "memory" (memory $0 1))
   (global $heap (mut i32) (i32.const 4))
 

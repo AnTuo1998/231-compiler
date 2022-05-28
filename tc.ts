@@ -3,8 +3,8 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar } from "./ast";
-import { isTypeEqual, isCls, getTypeStr, isAssignable, isRefType } from "./ast"
+import { isTypeEqual, isCls, getTypeStr, isAssignable, isRefType, isIndexable } from "./ast"
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, IndexExpr, ScopeVar, IdVar, LValue } from "./ast";
 import { TypeError } from "./error"
 
 type FunctionsEnv = Env<OneFun<Type>>;
@@ -281,7 +281,9 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const methodInfo = cls.funs.get(e.name);
       let newArgs = tcArgs(e.args, methodInfo, variables, functions, classes, true);
       return { ...e, obj: newObj, args: newArgs, a: methodInfo.ret };
-  }
+    case "index": 
+      return tcIndexExpr(e, variables, functions, classes); 
+    }
 }
 
 function assignable(src: Type, tar: Type, classes: ClassEnv):boolean {
@@ -310,6 +312,23 @@ export function tcMemberExpr(e: MemberExpr<any>, variables: BodyEnv, functions: 
     throw new Error(`There is no attribute named ${e.field} in class ${typStr}`);
   }
   return { ...e, a: cls.vars.get(e.field), obj };
+}
+
+export function tcIndexExpr(e: IndexExpr<any>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv): IndexExpr<Type> {
+  const newObj = tcExpr(e.obj, variables, functions, classes);
+  if (!isIndexable(newObj.a)) {
+    throw new TypeError(`Cannot index into type ${getTypeStr(newObj.a)}`)
+  }
+  const newIdx = tcExpr(e.idx, variables, functions, classes);
+  if (newIdx.a.tag !== "int") {
+    throw new TypeError(`Index is of non-integer type ${getTypeStr(newIdx.a)}`)
+  }
+  if (newObj.a.tag === "string") {
+    return { ...e, obj: newObj, idx: newIdx, a: newObj.a };
+  }
+  else if (newObj.a.tag === "list") {
+    return { ...e, obj: newObj, idx: newIdx, a: newObj.a.type }
+  }
 }
 
 export function tcStmt(s: Stmt<any>, variables: BodyEnv, 
@@ -343,10 +362,14 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
         if (!assignable(target.a, rhs.a, classes)) {
           throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
         }
-        return { ...s, target, value: rhs};
-
-      }
-      else {
+        return { ...s, target, value: rhs };
+      } else if (s.target.tag === "index") {
+        const target = tcIndexExpr(s.target, variables, functions, classes);
+        if (!assignable(target.a, rhs.a, classes)) {
+          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
+        }
+        return { ...s, target, value: rhs };
+      } else {
         throw new Error("not implemented");
       }
       
