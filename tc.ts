@@ -241,6 +241,15 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
           throw new Error("print expects a single argument");
         newArgs = [tcExpr(e.args[0], variables, functions, classes)];
         return { ...e, a: { tag: "none" }, args: newArgs };
+      } else if (e.name === "len") {
+        if (e.args.length !== 1)
+          throw new Error("len expects a single argument");
+        const newArgs = tcExpr(e.args[0], variables, functions, classes);
+        if (newArgs.a.tag !== "list" && newArgs.a.tag !== "string") {
+          // Chocopy do not type check this argument
+          throw new TypeError(`Cannot call len on type ${getTypeStr(newArgs.a)}`);
+        }
+        return { ...e, a: { tag: "int" }, args: [newArgs] };
       }
       var [found, cls] = classes.lookUpVar(e.name, SearchScope.GLOBAL);
       if (found) {
@@ -365,7 +374,7 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
         return { ...s, target, value: rhs };
       } else if (s.target.tag === "index") {
         const target = tcIndexExpr(s.target, variables, functions, classes);
-        if (!assignable(target.a, rhs.a, classes)) {
+        if (!assignable(target.a, rhs.a, classes) || target.obj.a.tag !== "list") {
           throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
         }
         return { ...s, target, value: rhs };

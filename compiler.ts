@@ -168,7 +168,10 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
     case "binop": {
       const lhsExprs = codeGenExpr(expr.lhs, locals, clsEnv);
       const rhsExprs = codeGenExpr(expr.rhs, locals, clsEnv);
-      const opstmts = opStmts(expr.op);
+      let opstmts = opStmts(expr.op);
+      if ((expr.lhs.a.tag === "list" || expr.lhs.a.tag === "string") && expr.op === "+") {
+        opstmts = [`call $concat_list_string`];
+      }
       return [...lhsExprs, ...rhsExprs, ...opstmts];
     }
     case "unop":
@@ -227,6 +230,12 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         }
         if (arg.tag === "id" && locals.get(arg.name))
           valStmts.push(`(i32.load)`);
+      } else if (expr.name === "len") {
+        valStmts.push(
+          `(call $check_init)`,
+          `(i32.load)`
+        );
+        return valStmts;
       }
       valStmts.push(`(call $${toCall})`);
       return valStmts;
