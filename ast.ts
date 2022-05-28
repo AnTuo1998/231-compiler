@@ -1,5 +1,5 @@
 export type Program<A> = 
-  { vardefs: VarDef<A>[], fundefs: FunDef<A>[], clsdefs:ClsDef<A>[], stmts: Stmt<A>[], string?: Map<string, string> }
+  { vardefs: VarDef<A>[], fundefs: FunDef<A>[], clsdefs:ClsDef<A>[], stmts: Stmt<A>[] }
 
 export type VarDef<A> =
   { typedvar: TypedVar, init: Literal<A> };

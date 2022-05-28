@@ -33,7 +33,7 @@ function addBlockIndent(block: string[], indent: number = 0): string[] {
 
 
 
-function variableNames(vardefs: VarDef<Type>[], gStrs: Map<string, string>): string[] {
+function variableNames(vardefs: VarDef<Type>[]): string[] {
   const vars: Array<string> = [];
   const var_set = new Set();
 
@@ -43,17 +43,11 @@ function variableNames(vardefs: VarDef<Type>[], gStrs: Map<string, string>): str
       var_set.add(vardef.typedvar.name);
     }
   });
-  gStrs.forEach((v, k) => {
-    if (!var_set.has(k)) {
-      vars.push(k);
-      var_set.add(k);
-    }
-  });
   return vars;
 }
 
 function varsFunsStmts(p: Program<Type>): [string[], FunDef<Type>[], ClsDef<Type>[], Stmt<Type>[]] {
-  return [variableNames(p.vardefs, p.string), p.fundefs, p.clsdefs, p.stmts];
+  return [variableNames(p.vardefs), p.fundefs, p.clsdefs, p.stmts];
 }
 
 export async function run(watSource: string, config: any): Promise<any> {
@@ -412,9 +406,10 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
 
   const varAssign = f.body.vardefs.map(v => {
     if (v.init.tag === "string") {
-      // console.log(withParamsAndVariables);
-      return [addIndent(`(global.get $${f.name}$${v.typedvar.name})`, indent + 1),
-      addIndent(`(local.set $${v.typedvar.name})`, indent + 1)].join("\n");
+      return [ 
+        `(global.get $${f.name}$${v.typedvar.name})`,
+        `(local.set $${v.typedvar.name})`
+      ].map(s => addIndent(s, indent + 1)).join("\n");
     } else {
       return codeGenVars(v, withParamsAndVariables, indent + 1);
     }
@@ -554,8 +549,8 @@ export function compile(source: string): string {
     // `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
-  const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
-  const main = [`(local $scratch i32)`, ...globalStrsStmts, ...varAssign, ...allStmts].join("\n");
+  // const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
+  const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];
   const isExpr = (lastStmt && lastStmt.tag === "expr");

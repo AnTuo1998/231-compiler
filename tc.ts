@@ -101,7 +101,7 @@ class OneFun<T> {
   }
 }
 
-const globalStrs = new Map<string, string>();
+const globalStrs = new Map<string, VarDef<Type>>();
 
 function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   if (!isCls(superCls) || !isCls(subCls)) {
@@ -725,7 +725,11 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, name
         `got type '${rhs.a}'`);
     }
     if (s.init.tag === "string") {
-      globalStrs.set(namePrefix + s.typedvar.name, s.init.value);
+      const newName = namePrefix + s.typedvar.name;
+      globalStrs.set(newName, { 
+        typedvar: { ...s.typedvar, name: newName  }, 
+        init: rhs 
+      });
     }
   } 
   else {
@@ -758,7 +762,7 @@ export function tcProgram(p: Program<any>): Program<Type> {
     classes.addDecl(c.name, undefined);
   })
   
-  const vardefs = p.vardefs.map(s => tcVarDef(s, variables, classes));
+  let vardefs = p.vardefs.map(s => tcVarDef(s, variables, classes));
   const clsdefs = processCls(p.clsdefs, variables, functions, classes);
   const fundefs = p.fundefs.map(s => tcFuncDef(s, variables, functions, classes)).flat();
   
@@ -768,5 +772,11 @@ export function tcProgram(p: Program<any>): Program<Type> {
     return res;
   });
 
-  return { ...p, vardefs, fundefs, clsdefs, stmts, string:globalStrs };
+  globalStrs.forEach((value, name) => {
+    const [found] = variables.lookUpVar(name);
+    if (!found)
+      vardefs.push(value);
+  })
+
+  return { ...p, vardefs, fundefs, clsdefs, stmts };
 }
