@@ -4,6 +4,7 @@
   (import "check" "check_init" (func $check_init (param i32) (result i32)))
   (import "check" "check_index" (func $check_index (param i32) (param i32) (result i32)))
   ;; (global $heap (mut i32) (i32.const 4))
+  
   (func $copy_list_string (param $src i32) (param $addr i32)
     (local $i i32)
     (local $len i32)

@@ -104,17 +104,19 @@ describe("PA4 tests for string", () => {
     assertTC("string-concat-index-type", `
   s:str = "ssss"
   t:str = "ttt"
-  len(s+t)`, NUM);
+  (s+t)[0]`, STRING);
     assertPrint("string-concat-assign", `
-  s:str = "ssss"
-  t:str = "ttt"
-  t = s + t
-  print(t)`, [`ssssttt`]);
+s:str = "ssss"
+t:str = "ttt"
+t = s + t
+print(t)`, [`ssssttt`]);
     // 4
+  assertPrint("string-concat-print", `
+  print("as"+"as")`, [`asas`]);
     assertPrint("string-concat-print", `
-  s:str = "sss"
-  t:str = "t"
-  print(s+t)`, [`ssst`]);
+s:str = "sss"
+t:str = "t"
+print(s+t)`, [`ssst`]);
     assertPrint("string-concat-print", `
   s:str = "sss"
   t:str = "t"

@@ -21,7 +21,9 @@ function print(typ: Type, arg: any, mem?: WebAssembly.Memory): any {
     let str: string = "";
     const addr = Number(arg) / 4;
     const len = mem[addr];
+    // console.log("len = ", len);
     for (let i = 0; i < len; i++) {
+      // console.log(String(mem[addr + i + 1]));
       str += String.fromCharCode(mem[addr + i + 1]);
     }
     importObject.output += str;

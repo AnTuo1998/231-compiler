@@ -172,7 +172,7 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
       if ((expr.lhs.a.tag === "list" || expr.lhs.a.tag === "string") && expr.op === "+") {
         opstmts = [`call $concat_list_string`];
       }
-      return [...lhsExprs, ...rhsExprs, ...opstmts];
+      return [...lhsExprs, ...rhsExprs, ...opstmts,];
     }
     case "unop":
       const unaryStmts = codeGenExpr(expr.expr, locals, clsEnv);
