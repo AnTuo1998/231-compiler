@@ -1,4 +1,4 @@
-import { importObject } from "./import-object.test";
+import { importObject, addLibs } from "./import-object.test";
 import { compile, run as Run } from '../compiler';
 import { tcProgram } from "../tc";
 import { parseProgram } from "../parser"
@@ -9,7 +9,8 @@ export function typeCheck(source: string) : Type {
   const lastStmt = tcp.stmts[tcp.stmts.length - 1];
   if (lastStmt && lastStmt.tag === "expr") {
     const lastType = lastStmt.expr.a;
-    if (lastType.tag === "int" || lastType.tag === "bool" || lastType.tag === "none") {
+    if (lastType.tag === "int" || lastType.tag === "bool" || 
+      lastType.tag === "none" || lastType.tag === "string") {
       return lastType.tag;
     } else if (lastType.tag === "object") {
       return CLASS(lastType.class);
@@ -24,36 +25,20 @@ export function typeCheck(source: string) : Type {
 // within another function in your compiler, for example if you need other
 // JavaScript-side helpers
 export async function run(source: string) {
-  let newImportObject = {
-    ...importObject,
-    check: {
-      check_init: (arg: any) => {
-        if (arg <= 0) {
-          throw new Error("RUNTIME ERROR: object not intialized");
-        }
-        return arg;
-      },
-      check_index: (length: any, arg: any) => {
-        if (arg >= length || arg < 0) {
-          throw new Error("RUNTIME ERROR: Index out of bounds");
-        }
-        return arg;
-      },
-    }
-
-  };
-  return Run(compile(source), newImportObject);
+  return Run(compile(source), await addLibs());
 }
 
 type Type =
   | "int"
   | "bool"
   | "none"
+  | "string"
   | { tag: "object", class: string }
 
 export const NUM : Type = "int";
 export const BOOL : Type = "bool";
 export const NONE : Type = "none";
+export const STRING: Type = "string";
 export function CLASS(name : string) : Type { 
   return { tag: "object", class: name }
 };
