@@ -518,15 +518,6 @@ export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   return [...varSelf, ...varUser];
 }
 
-
-export function codeGenGlobalStrs(gStrs: Map<string, string>, indent: number = 1): string[] {
-  const stmts:string[] = [];
-  gStrs.forEach((value, name) => {
-    stmts.push(...codeGenStrLit(value), `(global.set $${name})`)
-  })
-  return stmts.map(s => addIndent(s, indent + 1));
-}
-
 export function compile(source: string): string {
   let ast = parseProgram(source);
   ast = tcProgram(ast);
@@ -549,7 +540,6 @@ export function compile(source: string): string {
     // `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
-  // const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
   const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];
