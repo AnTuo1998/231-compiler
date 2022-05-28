@@ -14,7 +14,18 @@ function stringify(typ: Type, arg: any): string {
 }
 
 function print(typ: Type, arg: any, mem?: WebAssembly.Memory): any {
-  importObject.output += stringify(typ, arg);
+  if (typ !== Type.String) {
+    importObject.output += stringify(typ, arg);
+  } else {
+    const mem = new Uint32Array(memory.buffer);
+    let str: string = "";
+    const addr = Number(arg) / 4;
+    const len = mem[addr];
+    for (let i = 0; i < len; i++) {
+      str += String.fromCharCode(mem[addr + i + 1]);
+    }
+    importObject.output += str;
+  }
   importObject.output += "\n";
   return arg;
 }

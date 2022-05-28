@@ -109,7 +109,7 @@ export function codeGenStrLit(value: string): string[] {
     `(i32.const ${value.length})`,
     `(i32.store)`
   );
-  value.split("").slice().reverse().forEach((c, i) => {
+  value.split("").slice().forEach((c, i) => {
     stmts.push(
       `(global.get $heap)`,
       `(i32.add (i32.mul (i32.const ${i + 1}) (i32.const 4)))`,

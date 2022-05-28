@@ -426,7 +426,8 @@ export function traverseLit(t: TreeCursor, s: string): Literal<any> {
     case "None":
       return { tag: "none" };
     case "String":
-      return { tag: "string", value: s.substring(t.from, t.to) };
+      // remove double quotation marks
+      return { tag: "string", value: s.substring(t.from + 1, t.to - 1) };
     default:
       throw new ParseError(`Not a literal: ${t.type.name}`);
   }

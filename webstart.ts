@@ -26,9 +26,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         // return arg;
       },
       print_string: (arg: any) => {
-        display("None");
         // TODO WebAssembly.Memory
-        // return arg;
+        const mem = new Uint32Array(memory.buffer);
+        let str: string = "\"";
+        const addr = Number(arg) / 4;
+        const len = mem[addr];
+        for (let i = 0; i < len; i++) {
+          // display(String.fromCharCode(mem[addr + i + 1]));
+          str += String.fromCharCode(mem[addr + i + 1]);
+        } 
+        str += "\""
+        display(str);
       },
       abs: Math.abs,
       min: Math.min,
