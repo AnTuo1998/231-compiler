@@ -550,7 +550,7 @@ export function compile(source: string): string {
   const allStmts = stmts.map(s => codeGenStmt(s, emptyEnv, clsEnv, basicIndent + 1)).flat();
   const varDecls = codeGenAllGlobalVar(vars, basicIndent);
   const varCode = [
-    `(global $heap (mut i32) (i32.const 4))`,
+    // `(global $heap (mut i32) (i32.const 4))`,
     ...varDecls
   ].join("\n");
   // const globalStrsStmts = codeGenGlobalStrs(ast.string, basicIndent);
@@ -567,6 +567,7 @@ export function compile(source: string): string {
 
   return `(module
   (import "js" "memory" (memory $0 1))
+  (import "js" "heap" (global $heap (mut i32)))
   (func $print_num (import "imports" "print_num") (param i32) (result i32))
   (func $print_bool (import "imports" "print_bool") (param i32) (result i32))
   (func $print_none (import "imports" "print_none") (param i32) (result i32))

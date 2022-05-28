@@ -57,18 +57,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
     },
   };
+  const heap = new WebAssembly.Global({ value: 'i32', mutable: true }, 4);
   const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
   const memoryModule = await fetch('memory.wasm').then(response =>
     response.arrayBuffer()
   ).then(bytes =>
-    WebAssembly.instantiate(bytes, { js: { memory: memory } })
+    WebAssembly.instantiate(bytes, { js: { memory, heap } })
   );
   const builtinModule = await fetch('builtin.wasm').then(response =>
     response.arrayBuffer()
   ).then(bytes =>
-    WebAssembly.instantiate(bytes, { check: importObject.check, js: { memory: memory } })
+    WebAssembly.instantiate(bytes, { check: importObject.check, js: { memory, heap } })
   );
-  importObject.js = { memory };
+  importObject.js = { memory, heap };
   importObject.builtin = builtinModule.instance.exports;
   importObject.libmemory = memoryModule.instance.exports;
   const runButton = document.getElementById("run");

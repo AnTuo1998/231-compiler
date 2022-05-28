@@ -47,17 +47,19 @@ const check = {
   }
 };
 
-export async function addLibs() {  
+export async function addLibs() { 
+  const heap = new WebAssembly.Global({ value: 'i32', mutable: true }, 4);
+
   const bytes = readFileSync("build/memory.wasm");
-  const memoryModule = await WebAssembly.instantiate(bytes, { js: { memory: memory } });
+  const memoryModule = await WebAssembly.instantiate(bytes, { js: { memory, heap } });
 
   const built = readFileSync("build/builtin.wasm");
-  const builtinModule = await WebAssembly.instantiate(built, { check: check, js: { memory: memory } });
-  importObject.builtin = builtinModule.instance.exports;
-
+  const builtinModule = await WebAssembly.instantiate(built, { check, js: { memory, heap } });
+  
+  importObject.builtin = builtinModule.instance.exports; 
   importObject.libmemory = memoryModule.instance.exports;
   importObject.memory_values = memory;
-  importObject.js = { memory };
+  importObject.js = { memory, heap };
   importObject.check = check;
 
   return importObject;
