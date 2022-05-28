@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
       print_string: (arg: any) => {
         display("None");
+        // TODO WebAssembly.Memory
         // return arg;
       },
       abs: Math.abs,

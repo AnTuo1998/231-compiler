@@ -13,18 +13,19 @@ function stringify(typ: Type, arg: any): string {
   }
 }
 
-function print(typ: Type, arg: any): any {
+function print(typ: Type, arg: any, mem?: WebAssembly.Memory): any {
   importObject.output += stringify(typ, arg);
   importObject.output += "\n";
   return arg;
 }
 
-export async function addLibs() {
-  const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
-  // const bytes = readFileSync("stdlib/memory.wasm");
-  // const memoryModule = await WebAssembly.instantiate(bytes, { js: { mem: memory } })
-  // importObject.libmemory = memoryModule.instance.exports;
-  // importObject.memory_values = memory;
+const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+
+export async function addLibs() {  
+  const bytes = readFileSync("build/memory.wasm");
+  const memoryModule = await WebAssembly.instantiate(bytes, { js: { memory: memory } })
+  importObject.libmemory = memoryModule.instance.exports;
+  importObject.memory_values = memory;
   importObject.js = { memory };
   importObject.check = {
       check_init: (arg: any) => {
@@ -53,7 +54,7 @@ export const importObject:any = {
     print_num: (arg: number) => print(Type.Num, arg),
     print_bool: (arg: number) => print(Type.Bool, arg),
     print_none: (arg: number) => print(Type.None, arg),
-    print_string: (arg: number) => print(Type.String, arg),
+    print_string: (arg: number) => print(Type.String, arg, memory),
     abs: Math.abs,
     min: Math.min,
     max: Math.max,
