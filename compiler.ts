@@ -579,7 +579,7 @@ export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   }
   var varUser = vars.map(v => `(global $${v} (mut i32) (i32.const 0))`);
   const varHelper = []
-  for (let i = 0; i < for_label; i++) {
+  for (let i = 0; i < max_for_label; i++) {
     varHelper.push(
       `(global $ForLoopIter${i} (mut i32) (i32.const 0))`,
       `(global $ForLoopCnt${i} (mut i32) (i32.const 0))`,
@@ -607,10 +607,7 @@ export function compile(source: string): string {
   const varAssign = ast.vardefs.map(v => codeGenVars(v, emptyEnv, basicIndent + 1));
   const allStmts = stmts.map(s => codeGenStmt(s, emptyEnv, clsEnv, basicIndent + 1)).flat();
   const varDecls = codeGenAllGlobalVar(vars, basicIndent);
-  const varCode = [
-    // `(global $heap (mut i32) (i32.const 4))`,
-    ...varDecls
-  ].join("\n");
+  const varCode = [...varDecls].join("\n");
   const main = [`(local $scratch i32)`, ...varAssign, ...allStmts].join("\n");
 
   const lastStmt = ast.stmts[ast.stmts.length - 1];
