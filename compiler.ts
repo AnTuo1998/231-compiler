@@ -1,4 +1,3 @@
-import { StringifyOptions } from 'querystring';
 import wabt from 'wabt';
 import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, TypedVar } from "./ast";
 import { parseProgram } from './parser';
