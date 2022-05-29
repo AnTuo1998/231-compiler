@@ -9,8 +9,12 @@ type ClsEnv = Map<string, [ClsDef<Type>, number]>;
 let wabtApi: any = null;
 let selfVar = 0;
 let selfVarMax = 0;
+let for_label = 0;
+let max_for_label = 0;
 let leftParen = /(\()/g;
 let rightParen = /(\))/g;
+
+
 
 function addIndent(s: string, indent: number = 0): string {
   return "  ".repeat(indent) + s;
@@ -265,6 +269,33 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
       ];
       return indexStmts;
     }
+
+    case "array": {
+      const eleStmt = expr.eles.slice().reverse().map((ele, i) => codeGenExpr(ele, locals, clsEnv)).flat();
+      // DSC TODO: now the length of the list is on heap
+      eleStmt.push(`(global.get $heap)`,
+        `(i32.const ${expr.eles.length})`,
+        `(i32.store)`);
+      expr.eles.slice().reverse().forEach((ele, i) => {
+        eleStmt.push(
+          `(local.set $scratch)`,
+          `(global.get $heap)`,
+          `(i32.add (i32.mul (i32.const ${i + 1}) (i32.const 4)))`,
+          `(local.get $scratch)`,
+          `(i32.store)`
+        )
+      })
+      eleStmt.push(
+        `(global.get $heap) ;; addr of the list`,
+        `(global.get $heap)`,
+        `(i32.const ${expr.eles.length})`,
+        `(i32.add (i32.const 1))`,
+        `(i32.mul (i32.const 4))`,
+        `(i32.add)`,
+        `(global.set $heap)`,
+      )
+      return eleStmt;
+    }
   }
 }
 
@@ -353,6 +384,49 @@ export function codeGenStmt(stmt: Stmt<Type>, locals: Env, clsEnv: ClsEnv, inden
         addIndent(`(loop`, indent + 1),
         ...whilecondbody,
         addIndent(`)))`, indent)];
+    case "for": {
+      const arrExpr = codeGenExpr(stmt.iter, locals, clsEnv);
+      const forLabel = for_label;
+      for_label += 1;
+      max_for_label = for_label > max_for_label ? for_label : max_for_label;
+      const bodyStmts = stmt.body.map((s) => codeGenStmt(s, locals, clsEnv, indent)).flat();
+      for_label -= 1
+      const loopVarUpdate = (locals.has(stmt.loopVar.name)) ? `(local.set $${stmt.loopVar.name})` : `(global.set $${stmt.loopVar.name})`;
+      const loadVal = [];
+      if (stmt.iter.a.tag === "list") {
+        loadVal.push(
+          `(i32.add (i32.const 1) (global.get $ForLoopCnt${forLabel}))`,
+          `(i32.mul (i32.const 4))`,
+          `(i32.add (global.get $ForLoopIter${forLabel}))`,
+          `(i32.load)`,
+          loopVarUpdate);
+      }
+      if (stmt.iter.a.tag === "string") {
+        loadVal.push(
+          `(global.get $ForLoopIter${forLabel})`,
+          `(global.get $ForLoopCnt${forLabel})`,
+          `(call $get_string_index)`,
+          loopVarUpdate);
+      }
+      return [...arrExpr,
+      `(global.set $ForLoopIter${forLabel})`,
+      `(global.get $ForLoopIter${forLabel})`,
+        `(call $check_init)`,
+        `(i32.load)`,
+      `(global.set $ForLoopLen${forLabel})`,
+      `(global.set $ForLoopCnt${forLabel} (i32.const 0))`,
+        `(block`,
+        `(loop`,
+      `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
+        `(br_if 1)`,
+      ...loadVal,
+      ...bodyStmts,
+      `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
+        `(br 0)`,
+        `)`,
+        `)`];
+    }
+    
   }
 }
 
@@ -502,20 +576,18 @@ export function codeGenTable(classes: ClsDef<Type>[], clsEnv: ClsEnv, indent: nu
 export function codeGenAllGlobalVar(vars: string[], indent: number): string[] {
   const varSelf = [];
   for (let i = 0; i < selfVarMax; i++) {
-    varSelf.push(addIndent(`(global $self${i} (mut i32) (i32.const 0))`, indent));
+    varSelf.push(`(global $self${i} (mut i32) (i32.const 0))`);
   }
-  var varUser = vars.map(v => addIndent(`(global $${v} (mut i32) (i32.const 0))`, 1));
-  // const forLoopLabels = []
-  // for (let i = 0; i < for_label; i++) {
-  //   forLoopLabels.push(
-  //     `(global $ForLoopIter${i} (mut i32) (i32.const 0))`,
-  //     `(global $ForLoopCnt${i} (mut i32) (i32.const 0))`,
-  //     `(global $ForLoopLen${i} (mut i32) (i32.const 0))`
-  //   );
-  // }
-  // var varHelper = addIndent(forLoopLabels, 1).join("\n");
-  // return varUser + varHelper;
-  return [...varSelf, ...varUser];
+  var varUser = vars.map(v => `(global $${v} (mut i32) (i32.const 0))`);
+  const varHelper = []
+  for (let i = 0; i < for_label; i++) {
+    varHelper.push(
+      `(global $ForLoopIter${i} (mut i32) (i32.const 0))`,
+      `(global $ForLoopCnt${i} (mut i32) (i32.const 0))`,
+      `(global $ForLoopLen${i} (mut i32) (i32.const 0))`
+    );
+  }
+  return [...varSelf, ...varHelper, ...varUser].map(f => addIndent(f, indent));
 }
 
 export function compile(source: string): string {

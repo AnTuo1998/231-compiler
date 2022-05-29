@@ -14,6 +14,8 @@ export function typeCheck(source: string) : Type {
       return lastType.tag;
     } else if (lastType.tag === "object") {
       return CLASS(lastType.class);
+    } else if (lastType.tag === "list") {
+      return LIST(lastType.type);
     }
   }
   else
@@ -46,8 +48,8 @@ export function CLASS(name : string) : Type {
 
 export function LIST(typ: any): Type {
   if (typ.hasOwnProperty("tag")) {
-    if (typ.tag === "class")
-      return { tag: "list", type: typ.name };
+    if (typ.tag === "object")
+      return { tag: "list", type: typ.class };
     else if (typ.tag === "int" || typ.tag === "bool" || typ.tag === "none" || typ.tag === "string") {
       return { tag: "list", type: typ.tag };
     }

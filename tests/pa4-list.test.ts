@@ -37,7 +37,8 @@ describe("PA4 tests for list", () => {
     print(a[2])`, [`5`]);
     assertPrint("string-list-idx-expr", `
     a: [str] = None
-    a = ["abs", "ttttttttttt"]
+    c:str = "gkl"
+    a = ["abs", c, "ttttttttttt"]
     print(a[len(a)-1])`, [`ttttttttttt`]);
     // 3.2
     assertFail("idx-out-of-bound", `
