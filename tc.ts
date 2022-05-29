@@ -3,7 +3,7 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable, isIterable, isObject, isSimpleType } from "./ast";
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable, isIterable, isObject, isSimpleType, LValue } from "./ast";
 import { isTypeEqual, isCls, getTypeStr, isAssignable } from "./ast"
 import { TypeError } from "./error"
 
@@ -131,6 +131,17 @@ function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   return false;
 }
 
+export function unionListType(typ1: Type, typ2: Type, classes: ClassEnv): Type {
+  if (isTypeEqual(typ1, typ2)) {
+    return typ1;
+  } else if (assignable(typ1, typ2, classes)) {
+    return typ1;
+  } else if (assignable(typ2, typ1, classes)) {
+    return typ2;
+  } 
+  return { tag: "object", class: "object" }
+}
+
 export function tcLit(lit: Literal<any>): Literal<Type> {
   switch (lit.tag) {
     case "number":
@@ -192,14 +203,15 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const nRHStyp = getTypeStr(nRHS.a);
       switch (e.op) {
         case "+":
-          if (nLHStyp === "string" && nLHStyp === nRHStyp) {
+          if (nLHStyp === "string" && nRHStyp === "string") {
             return { ...e, a: { tag: "string" }, lhs: nLHS, rhs: nRHS };
-          } else if (nLHS.a.tag === "list" && nLHS.a.tag === nLHS.a.tag) {
-            if (!isTypeEqual(nLHS.a, nRHS.a)) {
-              //TODO not equal type, like object
-              throw new TypeError(`Try to concat two lists on type ${nLHStyp} and type ${nRHStyp}`);
-            }
-            return { ...e, a: nLHS.a, lhs: nLHS, rhs: nRHS };
+          } else if (nLHS.a.tag === "list" && nRHS.a.tag === "list") {
+            // if (!isAssignable(nLHS.a.type, nRHS.a.type)) {
+            //   //TODO not equal type, like object
+            //   throw new TypeError(`Try to concat two lists on type ${nLHStyp} and type ${nRHStyp}`);
+            // }
+            const newTyp = unionListType(nLHS.a.type, nRHS.a.type, classes);
+            return { ...e, a: { tag: "list", type: newTyp}, lhs: nLHS, rhs: nRHS };
           }
         case "-":
         case "*":
@@ -324,21 +336,8 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
         let generalType = newEles[0].a;
         newEles.forEach(ele => {
           let curType = ele.a;
-          if (!isTypeEqual(curType, generalType)) {
-            if (isSubClass(curType, generalType, classes)) {
-              generalType = curType;
-            } else if (generalType.tag === "none" && isCls(curType)) {
-              generalType = curType;
-            } else if (!(curType.tag === "none" && isCls(generalType)) &&
-              !isSubClass(generalType, curType, classes)) {
-              // throw new TypeError("Types in the list not uniform")
-              generalType = { tag: "object", class: "object" }
-            }
-          }
+          generalType = unionListType(generalType, curType, classes);
         })
-        // if (!newEles.every(ele => isAssignable(ele.a, newEles[0].a) || isAssignable(newEles[0].a, ele.a))) {
-        //     throw new TypeError("Types in the list not uniform")
-        // }
         typ = { tag: "list", type: generalType }
       }
 
@@ -397,6 +396,7 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
   switch (s.tag) {
     case "assign": {
       const rhs = tcExpr(s.value, variables, functions, classes);
+      let target: LValue<Type>;
       if (s.target.tag === "id"){
         const [found, varInfo] = variables.lookUpVar(s.target.name, SearchScope.LOCAL);
         if (!found) {
@@ -410,30 +410,28 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
             throw new Error(`Cannot assign variable that is not explicitly ` +
               `declared in this scope: ${s.target.name}`);
         }
-        if (!assignable(varInfo.typ, rhs.a, classes)) {
-          throw new TypeError(`Expect type '${getTypeStr(varInfo.typ)}'; got type '${getTypeStr(rhs.a)}'`);
-        }
-        if (isCls(varInfo.typ)) {
-          // TODO: tag initialized for object
-        }
-
-        return { ...s, target: { ...s.target, a:varInfo.typ }, value: rhs };
+        target = { ...s.target, a: varInfo.typ };
+        // if (!assignable(varInfo.typ, rhs.a, classes)) {
+        //   console.log(varInfo.typ, rhs.a);
+        //   throw new TypeError(`Expect type '${getTypeStr(varInfo.typ)}'; got type '${getTypeStr(rhs.a)}'`);
+        // }
+        // if (isCls(varInfo.typ)) {
+        //   // TODO: tag initialized for object
+        // }
       } else if (s.target.tag === "getfield") {
-        const target = tcMemberExpr(s.target, variables, functions, classes);
-        if (!assignable(target.a, rhs.a, classes)) {
-          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
-        }
-        return { ...s, target, value: rhs };
+        target = tcMemberExpr(s.target, variables, functions, classes);
       } else if (s.target.tag === "index") {
-        const target = tcIndexExpr(s.target, variables, functions, classes);
-        if (!assignable(target.a, rhs.a, classes) || target.obj.a.tag !== "list") {
-          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
+        target = tcIndexExpr(s.target, variables, functions, classes);
+        if (target.obj.a.tag === "string") {
+          throw new TypeError(`str is not a list type`);
         }
-        return { ...s, target, value: rhs };
       } else {
         throw new Error("not implemented");
+      } 
+      if (!assignable(target.a, rhs.a, classes)) {
+        throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
       }
-      
+      return { ...s, target, value: rhs };
     }
     case "expr": {
       const ret = tcExpr(s.expr, variables, functions, classes);

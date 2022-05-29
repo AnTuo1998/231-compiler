@@ -16,6 +16,14 @@ describe("PA4 tests for list", () => {
     a = ["abs", "ttttttttttt"]
     a`, LIST(STRING));
     assertTC("list-object-type", `
+a:[object] = None
+class A(object):
+    a:int = 1
+b:object= None
+b = object()
+a = [b]
+a`, LIST("object"));
+    assertTC("list-object-type-2", `
     [1, True]`, LIST("object"));
     // 2.1
     assertTC("list-ele-type", `
@@ -185,6 +193,17 @@ describe("PA4 tests for list", () => {
     b: [int] = None
     a = [1,2,3]
     print(b is a)`, [`False`]);
+    assertPrint("list-is-4", `
+a:[str] = None
+class C(object):
+    a:int = 1
+c:C=None
+c=C()
+print(a is None)
+print(c is a)
+print(None is c)
+print(None is a)
+`, [`True`, `False`, `False`, `True`]);
     // 11
     assertPrint("list-concat", `
     a: [int] = None
@@ -223,11 +242,21 @@ describe("PA4 tests for list", () => {
     assertFail("list-concat-none-1", `
     a: [int] = None
     b: [int] = None
-    a = a + b`)
+    a = a + b`);
     assertFail("list-concat-none-2", `
     a: [int] = None
     b: [int] = None
     a = [0,1,2]
-    a = a + b`)
+    a = a + b`);
+    assertPrint("list-concat-object-type", `
+class C(object):
+    x:int = 345
+class D(C):
+    y:int = 123
+def f():
+    return
+b: [C] = None
+b = [C(), D(), None]
+print(([f(), f(), None]+b)[4].x)`, [`345`]);
 });
 
