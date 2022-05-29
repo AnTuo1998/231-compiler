@@ -206,10 +206,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
           if (nLHStyp === "string" && nRHStyp === "string") {
             return { ...e, a: { tag: "string" }, lhs: nLHS, rhs: nRHS };
           } else if (nLHS.a.tag === "list" && nRHS.a.tag === "list") {
-            // if (!isAssignable(nLHS.a.type, nRHS.a.type)) {
-            //   //TODO not equal type, like object
-            //   throw new TypeError(`Try to concat two lists on type ${nLHStyp} and type ${nRHStyp}`);
-            // }
+            // chocopy can concat any two inited lists with return type list[object]
             const newTyp = unionListType(nLHS.a.type, nRHS.a.type, classes);
             return { ...e, a: { tag: "list", type: newTyp}, lhs: nLHS, rhs: nRHS };
           }
@@ -288,7 +285,6 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       }
       var [found, cls] = classes.lookUpVar(e.name, SearchScope.GLOBAL);
       if (found) {
-        // TODO: do for init
         if (cls.funs.has("__init__")) {
           var initMethodInfo = cls.funs.get("__init__");
           newArgs = tcArgs(e.args, initMethodInfo, variables, functions, classes, true);
@@ -411,13 +407,6 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
               `declared in this scope: ${s.target.name}`);
         }
         target = { ...s.target, a: varInfo.typ };
-        // if (!assignable(varInfo.typ, rhs.a, classes)) {
-        //   console.log(varInfo.typ, rhs.a);
-        //   throw new TypeError(`Expect type '${getTypeStr(varInfo.typ)}'; got type '${getTypeStr(rhs.a)}'`);
-        // }
-        // if (isCls(varInfo.typ)) {
-        //   // TODO: tag initialized for object
-        // }
       } else if (s.target.tag === "getfield") {
         target = tcMemberExpr(s.target, variables, functions, classes);
       } else if (s.target.tag === "index") {
@@ -523,7 +512,6 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
         throw new Error(`not a nonlocal variable: ${d.name}`);
       }
     }
-    // TODO: update typ or not
     let newTyp: OneVar<Type> = typ ;
     if (d.nonlocal) { // global no change
       newTyp = { ...typ, ref: true };

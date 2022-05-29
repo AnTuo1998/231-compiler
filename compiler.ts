@@ -272,7 +272,6 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
 
     case "array": {
       const eleStmt = expr.eles.slice().reverse().map((ele, i) => codeGenExpr(ele, locals, clsEnv)).flat();
-      // DSC TODO: now the length of the list is on heap
       eleStmt.push(`(global.get $heap)`,
         `(i32.const ${expr.eles.length})`,
         `(i32.store)`);
