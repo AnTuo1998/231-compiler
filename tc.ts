@@ -139,7 +139,7 @@ export function unionListType(typ1: Type, typ2: Type, classes: ClassEnv): Type {
   } else if (assignable(typ2, typ1, classes)) {
     return typ2;
   } 
-  return { tag: "object", class: "object" }
+  return { tag: "object", class: "object" };
 }
 
 export function tcLit(lit: Literal<any>): Literal<Type> {
