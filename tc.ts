@@ -3,7 +3,7 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable, isIterable, isObject, isSimpleType, LValue } from "./ast";
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable, isIterable, isObject, isSimpleType, LValue, isEmptyList } from "./ast";
 import { isTypeEqual, isCls, getTypeStr, isAssignable } from "./ast"
 import { TypeError } from "./error"
 
@@ -346,7 +346,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       if (!isIterable(iter.a)) {
         throw new TypeError(`Cannot iterate over value of type ${getTypeStr(iter.a)}`);
       }
-      if (iter.a.tag === "list" && !assignable(loopVar.a, iter.a.type, classes)) {
+      if (iter.a.tag === "list" && !isEmptyList(iter.a) && !assignable(loopVar.a, iter.a.type, classes)) {
         throw new TypeError(`Expect type '${getTypeStr(iter.a.type)}'; got type '${getTypeStr(loopVar.a)}'`);
       } else if (iter.a.tag === "string" && !assignable(loopVar.a, iter.a, classes)) {
         throw new TypeError(`Expect type '${getTypeStr(iter.a)}'; got type '${getTypeStr(loopVar.a)}'`);

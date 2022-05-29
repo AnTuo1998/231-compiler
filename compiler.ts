@@ -310,7 +310,7 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         loopVarUpdate
       ];
       const compStmt = addBlockIndent([
-        ...exprStmt,
+        ...iterStmts,
         `(global.set $ForLoopIter${forLabel})`,
         `(global.get $ForLoopIter${forLabel})`,
         `(call $check_init)`,
@@ -322,16 +322,24 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
         `(br_if 1)`,
         ...loadVal,
-        `(global.get $ForLoopIter${forLabel})`,
+        `(global.get $ForLoopCnt${forLabel})`,
         `(i32.add (i32.const 1))`, 
         `(i32.mul (i32.const 4))`,
         `(i32.add (global.get $heap))`, 
-        ...iterStmts, 
+        ...exprStmt, 
         `(i32.store)`,
         `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
         `(br 0)`,
         `)`,
-        `)`
+        `)`,
+        `(global.get $heap)`,
+        `(i32.store (global.get $ForLoopCnt${forLabel}))`,
+        `(global.get $heap) ;; return addr`,
+        `(global.get $ForLoopCnt${forLabel})`,
+        `(i32.add (i32.const 1))`,
+        `(i32.mul (i32.const 4))`,
+        `(i32.add (global.get $heap))`, 
+        `(global.set $heap)`
       ]);
       return compStmt;
     }
