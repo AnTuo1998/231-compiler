@@ -13,7 +13,9 @@
     "test-pa4": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4*.test.ts'",
     "test-inher": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-inher*.test.ts'",
     "test-scope": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-scope.test.ts'",
-    "test-str": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-string.test.ts'"
+    "test-str": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-string.test.ts'",
+    "test-list": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-list.test.ts'",
+    "test-for": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' mocha -r ts-node/register 'tests/**/pa4-for.test.ts'"
   },
   "author": "",
   "license": "ISC",
