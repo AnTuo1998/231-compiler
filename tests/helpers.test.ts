@@ -34,11 +34,27 @@ type Type =
   | "none"
   | "string"
   | { tag: "object", class: string }
+  | { tag: "list", type:Type }
 
 export const NUM : Type = "int";
 export const BOOL : Type = "bool";
 export const NONE : Type = "none";
 export const STRING: Type = "string";
 export function CLASS(name : string) : Type { 
-  return { tag: "object", class: name }
+  return { tag: "object", class: name };
+};
+
+export function LIST(typ: any): Type {
+  if (typ.hasOwnProperty("tag")) {
+    if (typ.tag === "class")
+      return { tag: "list", type: typ.name };
+    else if (typ.tag === "int" || typ.tag === "bool" || typ.tag === "none" || typ.tag === "string") {
+      return { tag: "list", type: typ.tag };
+    }
+    else if (typ.tag === "list") {
+      return { tag: "list", type: LIST(typ.type) };
+    }
+  } else {
+    return { tag: "list", type: typ };
+  }
 };
