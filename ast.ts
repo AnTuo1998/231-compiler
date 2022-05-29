@@ -73,6 +73,7 @@ export type Expr<A> =
   | { a?: A, tag: "call", name: string, args: Expr<A>[] }
   | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[]}
   | { a?: A, tag: "array", eles: Expr<A>[] }
+  | { a?: A, tag: "list-comp", expr: Expr<A>, loopVar: IdVar<A>, iter: Expr<A> }
   | IndexExpr<A>
   | IdVar<A>
   | MemberExpr<A>

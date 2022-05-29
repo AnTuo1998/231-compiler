@@ -260,3 +260,41 @@ b = [C(), D(), None]
 print(([f(), f(), None]+b)[4].x)`, [`345`]);
 });
 
+
+describe("PA4 tests for list comprehension", () => {
+    assertTC("list-comp-type", `
+    i: int = 0
+    [i for i in [1, 2, 3]]`, LIST(NUM));
+    assertTC("list-comp-assign", `
+    i: int = 0
+    a: [int] = None
+    a = [i for i in [1, 2, 3]]
+    a`, LIST(NUM));
+    assertTC("list-comp-index-type", `
+    i: int = 0
+    a: [int] = None
+    a = [i+1 for i in [1, 2, 3]]
+    a[0]`, NUM);
+    assertPrint("list-comp-index", `
+i: int = 0
+a: [int] = None
+a = [i*2 for i in [1, 2, 3]]
+print(a[0])`, [`2`]);
+    assertTC("empty-list-comp", `
+    i: int = 0
+    a: [int] = None
+    a = [i*2 for i in []]
+    a`, LIST(NUM));
+    assertPrint("empty-list-comp", `
+    i: int = 0
+    a: [int] = None
+    a = [i*2 for i in []]
+    print(len(a))`, [`0`]);
+    assertPrint("list-comp-func", `
+    i: int = 0
+    a: [int] = None
+    def sqr(i:int)->int:
+        return i*i
+    a = [sqr(i) for i in [11,12,13]]
+    print(a[1])`, [`144`]);
+});

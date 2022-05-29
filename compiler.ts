@@ -1,4 +1,3 @@
-import { StringifyOptions } from 'querystring';
 import wabt from 'wabt';
 import { BinOp, ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, getTypeStr, TypedVar } from "./ast";
 import { parseProgram } from './parser';
@@ -295,6 +294,47 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
       )
       return eleStmt;
     }
+    case "list-comp": {
+      const iterStmts = codeGenExpr(expr.iter, locals, clsEnv);
+      const forLabel = for_label;
+      for_label += 1;
+      max_for_label = max_for_label > for_label ? max_for_label : for_label;
+      const exprStmt = codeGenExpr(expr.expr, locals, clsEnv);
+      for_label -= 1; 
+      const loopVarUpdate = (locals.has(expr.loopVar.name)) ?
+        `(local.set $${expr.loopVar.name})` : `(global.set $${expr.loopVar.name})`;
+      const loadVal = [
+        `(global.get $ForLoopIter${forLabel})`,
+        `(global.get $ForLoopCnt${forLabel})`,
+        `(call $get_${expr.iter.a.tag}_index)`,
+        loopVarUpdate
+      ];
+      const compStmt = addBlockIndent([
+        ...exprStmt,
+        `(global.set $ForLoopIter${forLabel})`,
+        `(global.get $ForLoopIter${forLabel})`,
+        `(call $check_init)`,
+        `(i32.load)`,
+        `(global.set $ForLoopLen${forLabel})`,
+        `(global.set $ForLoopCnt${forLabel} (i32.const 0))`,
+        `(block`,
+        `(loop`,
+        `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
+        `(br_if 1)`,
+        ...loadVal,
+        `(global.get $ForLoopIter${forLabel})`,
+        `(i32.add (i32.const 1))`, 
+        `(i32.mul (i32.const 4))`,
+        `(i32.add (global.get $heap))`, 
+        ...iterStmts, 
+        `(i32.store)`,
+        `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
+        `(br 0)`,
+        `)`,
+        `)`
+      ]);
+      return compStmt;
+    }
   }
 }
 
@@ -390,40 +430,31 @@ export function codeGenStmt(stmt: Stmt<Type>, locals: Env, clsEnv: ClsEnv, inden
       max_for_label = for_label > max_for_label ? for_label : max_for_label;
       const bodyStmts = stmt.body.map((s) => codeGenStmt(s, locals, clsEnv, indent)).flat();
       for_label -= 1
-      const loopVarUpdate = (locals.has(stmt.loopVar.name)) ? `(local.set $${stmt.loopVar.name})` : `(global.set $${stmt.loopVar.name})`;
-      const loadVal = [];
-      if (stmt.iter.a.tag === "list") {
-        loadVal.push(
-          `(i32.add (i32.const 1) (global.get $ForLoopCnt${forLabel}))`,
-          `(i32.mul (i32.const 4))`,
-          `(i32.add (global.get $ForLoopIter${forLabel}))`,
-          `(i32.load)`,
-          loopVarUpdate);
-      }
-      if (stmt.iter.a.tag === "string") {
-        loadVal.push(
+      const loopVarUpdate = (locals.has(stmt.loopVar.name)) ? 
+      `(local.set $${stmt.loopVar.name})` : `(global.set $${stmt.loopVar.name})`;
+      const loadVal = [
           `(global.get $ForLoopIter${forLabel})`,
           `(global.get $ForLoopCnt${forLabel})`,
-          `(call $get_string_index)`,
-          loopVarUpdate);
-      }
-      return [...arrExpr,
+          `(call $get_${stmt.iter.a.tag}_index)`,
+          loopVarUpdate
+      ];
+      return addBlockIndent([...arrExpr,
       `(global.set $ForLoopIter${forLabel})`,
       `(global.get $ForLoopIter${forLabel})`,
-        `(call $check_init)`,
-        `(i32.load)`,
+      `(call $check_init)`,
+      `(i32.load)`,
       `(global.set $ForLoopLen${forLabel})`,
       `(global.set $ForLoopCnt${forLabel} (i32.const 0))`,
-        `(block`,
-        `(loop`,
+      `(block`,
+      `(loop`,
       `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
-        `(br_if 1)`,
+      `(br_if 1)`,
       ...loadVal,
       ...bodyStmts,
       `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
-        `(br 0)`,
-        `)`,
-        `)`];
+      `(br 0)`,
+      `)`,
+      `)`], indent);
     }
     
   }

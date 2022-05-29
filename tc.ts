@@ -339,6 +339,20 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
 
       return { ...e, a: typ, eles: newEles }
     } 
+    case "list-comp": {
+      const expr = tcExpr(e.expr, variables, functions, classes);
+      const loopVar = tcIdVar(e.loopVar, variables, functions, classes);
+      const iter = tcExpr(e.iter, variables, functions, classes);
+      if (!isIterable(iter.a)) {
+        throw new TypeError(`Cannot iterate over value of type ${getTypeStr(iter.a)}`);
+      }
+      if (iter.a.tag === "list" && !assignable(loopVar.a, iter.a.type, classes)) {
+        throw new TypeError(`Expect type '${getTypeStr(iter.a.type)}'; got type '${getTypeStr(loopVar.a)}'`);
+      } else if (iter.a.tag === "string" && !assignable(loopVar.a, iter.a, classes)) {
+        throw new TypeError(`Expect type '${getTypeStr(iter.a)}'; got type '${getTypeStr(loopVar.a)}'`);
+      }
+      return {...e, a: {tag: "list", type: expr.a }, expr, loopVar, iter };
+    }
   }
 }
 

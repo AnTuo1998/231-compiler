@@ -5,7 +5,6 @@ import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier } from './a
 import { ParseError } from './error';
 import { assert } from "chai";
 
-
 function isDecl(t: TreeCursor, s: string) {
   if (t.type.name === "FunctionDefinition" || 
     t.type.name === "ClassDefinition" ||
@@ -573,10 +572,23 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
         }
       }
       t.parent();
-      return {
-        tag: "array",
-        eles
-      }
+      return { tag: "array", eles };
+    case "ArrayComprehensionExpression": 
+      t.firstChild();  // "["
+      t.nextSibling();
+      const expr = traverseExpr(t, s);
+      t.nextSibling(); // for
+      t.nextSibling(); // VariableName
+      const loopVar: IdVar<any> = {
+        tag: "id",
+        name: s.substring(t.from, t.to)
+      };
+      t.nextSibling(); // in
+      t.nextSibling();
+      const iter = traverseExpr(t, s);
+      t.nextSibling(); // "]"
+      t.parent();
+      return { tag:"list-comp", expr, loopVar, iter };
     default:
       throw new ParseError("Could not parse expr at " +
         t.from + " " + t.to + ": " + s.substring(t.from, t.to));
