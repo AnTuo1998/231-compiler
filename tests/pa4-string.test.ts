@@ -193,4 +193,12 @@ print(f(s, 3))
       return y+z
     return g(x)
   print(f())`, ["xxxxzzz"])
+  assertPrint("string-comparsion", `
+  a:str = "abc"
+  print("abc" == a)
+  print("abc" != a)
+  print(a == "abc")
+  print(a == a)
+  print("jkl" == "jkm")
+  print("jkl" != "vbnmmgm")`, [`True`, `False`, `True`, `True`, `False`, `True`])
 });

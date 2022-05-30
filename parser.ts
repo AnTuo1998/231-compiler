@@ -1,8 +1,10 @@
 import { TreeCursor } from '@lezer/common';
 import { parser } from '@lezer/python';
-import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr } from './ast';
+import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr, IdVar } from './ast';
 import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier } from './ast';
 import { ParseError } from './error';
+import { assert } from "chai";
+
 
 function isDecl(t: TreeCursor, s: string) {
   if (t.type.name === "FunctionDefinition" || 
@@ -336,6 +338,28 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
       let whilestmt = traverseCondBody(t, s);
       t.parent();
       return { tag: "while", whilestmt };
+    case "ForStatement": {
+      const c:TreeCursor = t;
+      t.firstChild(); // for
+      assert(t.node.type.name === "for");
+      t.nextSibling();
+      // const cnt = traverseExpr(t, s);
+      if (c.name !== "VariableName")
+        throw new Error("Could not parse stmt at " + t.node.from + " " + t.node.to + ": " + s.substring(t.from, t.to));
+      const loopVar: IdVar<any> = {
+        tag: "id",
+        name: s.substring(t.from, t.to)
+      };
+      t.nextSibling(); // in
+      assert(t.node.type.name === "in");
+      t.nextSibling(); // array
+      const array = traverseExpr(t, s);
+      t.nextSibling(); // body
+      const body = traverseStmts(t, s);
+      t.parent()
+      // assert(t.node.type.name === originName);
+      return { tag: "for", loopVar, iter: array, body };
+    } 
     default:
       throw new ParseError("Could not parse statement at " +
         t.from + " " + t.to + ": " + s.substring(t.from, t.to));
@@ -390,6 +414,18 @@ export function traverseType(t: TreeCursor, s: string): Type {
       } else {
         return { tag: "object", class: name };
       }
+    case "ArrayExpression": { // list type
+      t.firstChild(); // focus on [ first
+      t.nextSibling();
+      const inside_type = traverseType(t, s);
+      t.nextSibling();
+      const maybeClosedBracket = t;
+      if (maybeClosedBracket.node.name !== "]") {
+        throw new ParseError("Parse Error: " + t.type.name);
+      }
+      t.parent();
+      return { tag: "list", type: inside_type };
+    }
     default:
       throw new Error("Unknown type: " + t.type.name);
 
@@ -521,6 +557,26 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
       return insideExpr;
     case "MemberExpression":
       return traverseMemberExpr(t, s);
+    case "ArrayExpression":
+      const eles = [];
+      t.firstChild();
+      while (t.nextSibling()) {
+        let c:TreeCursor = t;
+        if (c.name === "]") {
+          break;
+        }
+        eles.push(traverseExpr(t, s));
+        t.nextSibling();
+        c = t;
+        if (c.name !== "," && c.name !== "]") {
+          throw new ParseError("Could not parse expr at " + c.type.name + c.from + " " + c.to + ": " + s.substring(c.from, c.to));
+        }
+      }
+      t.parent();
+      return {
+        tag: "array",
+        eles
+      }
     default:
       throw new ParseError("Could not parse expr at " +
         t.from + " " + t.to + ": " + s.substring(t.from, t.to));

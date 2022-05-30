@@ -49,7 +49,7 @@ export type IndexExpr<A> =
   | { a?: A, tag: "index", obj: Expr<A>, idx: Expr<A> }
 
 export type IdVar<A> = 
-  | { a?: A, tag: "id", name: string, global?: boolean }
+  | { a?: A, tag: "id", name: string }
 
 export type LValue<A> = 
   | IdVar<A>
@@ -63,6 +63,7 @@ export type Stmt<A> =
   | { a?: A, tag: "pass"}
   | { a?: A, tag: "if", ifstmt: CondBody<A>, elifstmt?: CondBody<A>[], elsestmt?: Stmt<A>[]}
   | { a?: A, tag: "while", whilestmt: CondBody<A> }
+  | { a?: A, tag: "for", loopVar: IdVar<A>, iter: Expr<A>, body: Stmt<A>[] }
 
 
 export type Expr<A> = 
@@ -108,19 +109,30 @@ export function isSubType(src: Type, tar: Type): boolean {
   // return if tar is a subType of src
   if (isCls(src)) {
     return isTypeEqual(tar, {tag: "none"});
+  } else if (src.tag === "list") {
+    if (tar.tag === "list")
+      return isEmptyList(tar) || isAssignable(src.type, tar.type);
+    return isTypeEqual(tar, { tag: "none" });
   }
+  return false;
 }
 
 export function isTypeEqual(typ1: Type, typ2: Type): boolean {
+  // if (typ1 === null) return typ1 === null;
   return getTypeStr(typ1) === getTypeStr(typ2);
 }
 
 
 export function getTypeStr(typ: Type): string {
-  if (isSimpleType(typ))
+  if (typ === null) {
+    return "null";
+  } else if (isSimpleType(typ))
     return typ.tag;
   else if (isCls(typ))
     return (typ as ObjType).class
+  else if (typ.tag === "list") {
+    return `list[${getTypeStr(typ.type)}]`;
+  } 
 }
 
 export function isSimpleType(maybeTyp: Type): boolean {
@@ -128,14 +140,28 @@ export function isSimpleType(maybeTyp: Type): boolean {
 }
 
 export function isCls(maybeCls: Type): maybeCls is ObjType {
-  return (maybeCls as ObjType).class !== undefined;
+  return maybeCls.tag === "object"
+  // return (maybeCls as ObjType).class !== undefined;
   // return "class" in (maybeCls as ObjType);
+}
+
+export function isObject(maybeCls: Type): boolean{
+  return maybeCls.tag === "list" || maybeCls.tag === "object" 
 }
 
 
 export function isIndexable(a: Type) {
   return a.tag === "string" || a.tag === "list"
 }
+
+export function isEmptyList(a: Type) {
+  return a.tag === "list" && a.type === null
+}
+
+export function isIterable(a: Type) {
+  return a.tag === "string" || a.tag === "list"
+}
+
 
 export const keywords = new Set<string>([
   "int", "bool", "None", "def", "if", "while", "else", "for", "elif", "return", "class",

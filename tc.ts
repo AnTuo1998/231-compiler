@@ -3,7 +3,7 @@ The type checker uses an array of BodyEnv as different level of scopes,
 making it easier(?) to add keywords like global and nonlocal
 This idea is borrowed from my classmate, Shanbin Ke.
 */
-import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable } from "./ast";
+import { ClsDef, CondBody, Expr, FunDef, Literal, MemberExpr, Program, Stmt, Type, VarDef, ObjType, TypedVar, ScopeVar, IdVar, IndexExpr, isIndexable, isIterable, isObject, isSimpleType, LValue } from "./ast";
 import { isTypeEqual, isCls, getTypeStr, isAssignable } from "./ast"
 import { TypeError } from "./error"
 
@@ -118,7 +118,8 @@ export function isRefType(maybeTyp: OneVar<Type>): boolean {
 function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
   if (!isCls(superCls) || !isCls(subCls)) {
     // sanity check
-    throw new Error("not a class type");
+    // throw new Error("not a class type");
+    return false;
   }
   while (subCls.class !== "object") {
     const [found, clsEnv] = classes.lookUpVar(getTypeStr(subCls));
@@ -128,6 +129,17 @@ function isSubClass(superCls: Type, subCls: Type, classes: ClassEnv): boolean {
     subCls = clsEnv.super;
   } 
   return false;
+}
+
+export function unionListType(typ1: Type, typ2: Type, classes: ClassEnv): Type {
+  if (isTypeEqual(typ1, typ2)) {
+    return typ1;
+  } else if (assignable(typ1, typ2, classes)) {
+    return typ1;
+  } else if (assignable(typ2, typ1, classes)) {
+    return typ2;
+  } 
+  return { tag: "object", class: "object" };
 }
 
 export function tcLit(lit: Literal<any>): Literal<Type> {
@@ -165,6 +177,19 @@ export function tcArgs(args: Expr<any>[], funcInfo: OneFun<Type>,
   return newArgs;
 }
 
+export function tcIdVar(e: IdVar<any>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv): IdVar<Type> {
+  var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.LOCAL_AND_GLOBAL);
+  if (found) {
+    return { ...e, a: varInfo.typ };
+  }
+  var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.NONLOCAL);
+  if (!found) {
+    throw new ReferenceError(`Not a variable: ${e.name}`);
+  }
+  variables.addDecl(e.name, { ...varInfo, ref: false });
+  return { ...e, a: varInfo.typ };
+}
+
 export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv): Expr<Type> {
   switch (e.tag) {
     case "literal":
@@ -178,8 +203,12 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       const nRHStyp = getTypeStr(nRHS.a);
       switch (e.op) {
         case "+":
-          if (nLHStyp === "string" && nLHStyp === nRHStyp) {
+          if (nLHStyp === "string" && nRHStyp === "string") {
             return { ...e, a: { tag: "string" }, lhs: nLHS, rhs: nRHS };
+          } else if (nLHS.a.tag === "list" && nRHS.a.tag === "list") {
+            // chocopy can concat any two inited lists with return type list[object]
+            const newTyp = unionListType(nLHS.a.type, nRHS.a.type, classes);
+            return { ...e, a: { tag: "list", type: newTyp}, lhs: nLHS, rhs: nRHS };
           }
         case "-":
         case "*":
@@ -212,12 +241,10 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
         // case "and": return { ...e, a: "bool" };
         // case "or": return { ...e, a: "bool" };
         case "is":
-          // TODO: "is" operation is not complete yet
-          if ((!isCls(nLHS.a) && nLHS.a.tag !== "none") || (!isCls(nRHS.a) && nRHS.a.tag !== "none")) {
+          if ((!isObject(nLHS.a) && nLHS.a.tag !== "none") || (!isObject(nRHS.a) && nRHS.a.tag !== "none")) {
             throw new TypeError(`Cannot apply operator '${e.op}' on types '${nLHStyp}' and '${nRHStyp}'`)
           }
           return { ...e, a: { tag: "bool" }, lhs: nLHS, rhs: nRHS };
-        // default: throw new Error(`Unhandled op ${e.op}`);
       }
     }
     case "unop": {
@@ -238,16 +265,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       }
     }
     case "id":
-      var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.LOCAL_AND_GLOBAL);
-      if (found) {
-        return { ...e, a: varInfo.typ };
-      }
-      var [found, varInfo] = variables.lookUpVar(e.name, SearchScope.NONLOCAL);
-      if (!found) {
-        throw new ReferenceError(`Not a variable: ${e.name}`);
-      }
-      variables.addDecl(e.name, { ...varInfo, ref: false });
-      return { ...e, a: varInfo.typ };
+      return tcIdVar(e, variables, functions, classes);
     case "call":{
       let newArgs: Expr<Type>[] = [];
       if (e.name === "print") {
@@ -267,7 +285,6 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       }
       var [found, cls] = classes.lookUpVar(e.name, SearchScope.GLOBAL);
       if (found) {
-        // TODO: do for init
         if (cls.funs.has("__init__")) {
           var initMethodInfo = cls.funs.get("__init__");
           newArgs = tcArgs(e.args, initMethodInfo, variables, functions, classes, true);
@@ -306,7 +323,23 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       return { ...e, obj: newObj, args: newArgs, a: methodInfo.ret };
     case "index": 
       return tcIndexExpr(e, variables, functions, classes); 
-    }
+    case "array": {
+      const newEles = e.eles.map(ele => tcExpr(ele, variables, functions, classes));
+      var typ: Type;
+      if (newEles.length === 0) {
+        typ = { tag: "list", type: null };
+      } else {
+        let generalType = newEles[0].a;
+        newEles.forEach(ele => {
+          let curType = ele.a;
+          generalType = unionListType(generalType, curType, classes);
+        })
+        typ = { tag: "list", type: generalType }
+      }
+
+      return { ...e, a: typ, eles: newEles }
+    } 
+  }
 }
 
 function assignable(src: Type, tar: Type, classes: ClassEnv):boolean {
@@ -359,6 +392,7 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
   switch (s.tag) {
     case "assign": {
       const rhs = tcExpr(s.value, variables, functions, classes);
+      let target: LValue<Type>;
       if (s.target.tag === "id"){
         const [found, varInfo] = variables.lookUpVar(s.target.name, SearchScope.LOCAL);
         if (!found) {
@@ -372,30 +406,21 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
             throw new Error(`Cannot assign variable that is not explicitly ` +
               `declared in this scope: ${s.target.name}`);
         }
-        if (!assignable(varInfo.typ, rhs.a, classes)) {
-          throw new TypeError(`Expect type '${getTypeStr(varInfo.typ)}'; got type '${getTypeStr(rhs.a)}'`);
-        }
-        if (isCls(varInfo.typ)) {
-          // TODO: tag initialized for object
-        }
-
-        return { ...s, target: { ...s.target, a:varInfo.typ }, value: rhs };
+        target = { ...s.target, a: varInfo.typ };
       } else if (s.target.tag === "getfield") {
-        const target = tcMemberExpr(s.target, variables, functions, classes);
-        if (!assignable(target.a, rhs.a, classes)) {
-          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
-        }
-        return { ...s, target, value: rhs };
+        target = tcMemberExpr(s.target, variables, functions, classes);
       } else if (s.target.tag === "index") {
-        const target = tcIndexExpr(s.target, variables, functions, classes);
-        if (!assignable(target.a, rhs.a, classes) || target.obj.a.tag !== "list") {
-          throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
+        target = tcIndexExpr(s.target, variables, functions, classes);
+        if (target.obj.a.tag === "string") {
+          throw new TypeError(`str is not a list type`);
         }
-        return { ...s, target, value: rhs };
       } else {
         throw new Error("not implemented");
+      } 
+      if (!assignable(target.a, rhs.a, classes)) {
+        throw new TypeError(`Expect type '${getTypeStr(target.a)}'; got type '${getTypeStr(rhs.a)}'`);
       }
-      
+      return { ...s, target, value: rhs };
     }
     case "expr": {
       const ret = tcExpr(s.expr, variables, functions, classes);
@@ -420,6 +445,20 @@ export function tcStmt(s: Stmt<any>, variables: BodyEnv,
     case "while": {
       const whilestmt = tcCondBody(s.whilestmt, variables, functions, classes, currentReturn);
       return { ...s, whilestmt };
+    }
+    case "for": {
+      const newCnt = tcIdVar(s.loopVar, variables, functions, classes);
+      const newIter = tcExpr(s.iter, variables, functions, classes);
+      if (!isIterable(newIter.a)) {
+        throw new TypeError(`Cannot iterate over value of type ${getTypeStr(newCnt.a)}`);
+      }
+      // TODO: should compare to newArray.a.type
+      if ((newIter.a.tag === "list" && !isAssignable(newCnt.a, newIter.a.type)) ||
+        (newIter.a.tag === "string" && !isAssignable(newCnt.a, newIter.a))) {
+        throw new TypeError(`Expected type ${getTypeStr(newCnt.a)} but got type ${getTypeStr(newIter.a)}`);
+      }
+      const newBody = s.body.map(stmt => tcStmt(stmt, variables, functions, classes, currentReturn));
+      return { ...s, loopVar: newCnt, iter: newIter, body: newBody };
     }
   }
 }
@@ -473,7 +512,6 @@ export function tcNestedFuncDef(f: FunDef<any>, variables: BodyEnv,
         throw new Error(`not a nonlocal variable: ${d.name}`);
       }
     }
-    // TODO: update typ or not
     let newTyp: OneVar<Type> = typ ;
     if (d.nonlocal) { // global no change
       newTyp = { ...typ, ref: true };
@@ -733,33 +771,49 @@ export function processCls(clsdefs: ClsDef<any>[], variables: BodyEnv,
 
 export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, namePrefix:string = ""): VarDef<Type> {
   const rhs = tcLit(s.init);
+  if (!isSimpleType(rhs.a)) {
+    throw new Error(`can only initialize variable with literal`);
+  }
   const rhsTyp = getTypeStr(rhs.a);
   const varTypName = getTypeStr(s.typedvar.typ);
   local.addDecl(s.typedvar.name, new OneVar<Type>(s.typedvar.typ, s.typedvar.ref)); // no redefinition error
-  if (!isCls(s.typedvar.typ)) {
-    if (!isTypeEqual(s.typedvar.typ, rhs.a)) {
-      throw new TypeError(`Expect type '${varTypName}'; ` +
-        `got type '${rhs.a}'`);
-    }
-    if (s.init.tag === "string") {
-      const newName = namePrefix + s.typedvar.name;
-      globalStrs.set(newName, { 
-        typedvar: { ...s.typedvar, name: newName  }, 
-        init: rhs 
-      });
-    }
-  } 
-  else {
-    const [found] = classes.lookUpVar(varTypName, SearchScope.GLOBAL);
-    if (!found) {
-      throw new Error(`Invalid type annotation; ` + 
-        `there is no class named: ${varTypName}`);
-    }
-    if (rhsTyp !== "none") {
-      throw new TypeError(`Expect type '${varTypName}'; ` +
-        `got type '${rhsTyp}'`);
-    }
-  } 
+  
+  if (!assignable(s.typedvar.typ, rhs.a, classes)) {
+    throw new TypeError(`Expect type '${varTypName}'; ` + 
+      `got type '${rhs.a}'`);
+  }
+
+  if (s.init.tag === "string") {
+    const newName = namePrefix + s.typedvar.name;
+    globalStrs.set(newName, {
+      typedvar: { ...s.typedvar, name: newName },
+      init: rhs
+    });
+  }
+
+  // if (!isObject(s.typedvar.typ)) {
+  //   if (!isTypeEqual(s.typedvar.typ, rhs.a)) {
+  //     throw new TypeError(`Expect type '${varTypName}'; ` +
+  //       `got type '${rhs.a}'`);
+  //   }
+  //   if (s.init.tag === "string") {
+  //     const newName = namePrefix + s.typedvar.name;
+  //     globalStrs.set(newName, { 
+  //       typedvar: { ...s.typedvar, name: newName  }, 
+  //       init: rhs 
+  //     });
+  //   }
+  // } else if (isCls(s.typedvar.typ)){
+  //   const [found] = classes.lookUpVar(varTypName, SearchScope.GLOBAL);
+  //   if (!found) {
+  //     throw new Error(`Invalid type annotation; ` + 
+  //       `there is no class named: ${varTypName}`);
+  //   }
+  //   if (rhsTyp !== "none") {
+  //     throw new TypeError(`Expect type '${varTypName}'; ` +
+  //       `got type '${rhsTyp}'`);
+  //   }
+  // } 
   return { ...s, init: rhs };
 }
 
