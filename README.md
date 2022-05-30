@@ -1,29 +1,18 @@
 This repo is a personal compiler implementation for [Chocopy](https://chocopy.org/) and beyond, based on CSE231 materials. We focus on compiling Chocopy into wasm. 
 
 ### Build
-
 Requires node to be installed (https://nodejs.org/en/download/)
-
 - To build, first run `npm install`
-
 - run `make` to build some wasm libraries
-
 - run `npm run build-web` to write code on webpages
-
 - run `npm test` to run all the test cases
-  
   - more test command, see `package.json` 
 
 ### Features
-
 - Control flow 
-
 - String
-
 - Class
-
 - Nested function
-
 - Lists
 
 See more details about Chocopy grammar [here](https://chocopy.org/chocopy_language_reference.pdf).
