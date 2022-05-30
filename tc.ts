@@ -226,16 +226,14 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
         case "<=":
           if (nLHStyp === "int" && nRHStyp === "int") {
             return { ...e, a: { tag: "bool" }, lhs: nLHS, rhs: nRHS };
-          }
-          else {
+          } else {
             throw new TypeError(`Cannot apply operator '${e.op}' on types '${nLHStyp}' and '${nRHStyp}'`);
           }
         case "==":
         case "!=":
-          if (nLHStyp === nRHStyp && !isCls(nLHS.a)) {
+          if (nLHStyp === nRHStyp && !isObject(nLHS.a)) {
             return { ...e, a: { tag: "bool" }, lhs: nLHS, rhs: nRHS };
-          }
-          else {
+          } else {
             throw new TypeError(`Cannot apply operator '${e.op}' on types '${nLHStyp}' and '${nRHStyp}'`);
           }
         // case "and": return { ...e, a: "bool" };

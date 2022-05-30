@@ -168,6 +168,11 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
       let opstmts = opStmts(expr.op);
       if ((expr.lhs.a.tag === "list" || expr.lhs.a.tag === "string") && expr.op === "+") {
         opstmts = [`call $concat_list_string`];
+      } else if (expr.lhs.a.tag === "string" && (expr.op === "==" || expr.op === "!=")) {
+        if (expr.op === "==")
+          opstmts = [`call $streq`];
+        else
+          opstmts = [`call $strneq`];
       }
       return [...lhsExprs, ...rhsExprs, ...opstmts,];
     }
@@ -630,6 +635,8 @@ export function compile(source: string): string {
   (func $concat_list_string (import "builtin" "$concat_list_string") (param i32) (param i32) (result i32))
   (func $get_string_index (import "builtin" "$get_string_index") (param i32) (param i32) (result i32))
   (func $get_list_index (import "builtin" "$get_list_index") (param i32) (param i32) (result i32))
+  (func $strneq (import "builtin" "$strneq") (param i32) (param i32) (result i32))
+  (func $streq (import "builtin" "$streq") (param i32) (param i32) (result i32))
   (func $abs(import "imports" "abs") (param i32) (result i32))
   (func $min(import "imports" "min") (param i32) (param i32) (result i32))
   (func $max(import "imports" "max") (param i32) (param i32) (result i32))
