@@ -794,7 +794,7 @@ export function tcVarDef(s: VarDef<any>, local: BodyEnv, classes: ClassEnv, name
   
   if (!assignable(s.typedvar.typ, rhs.a, classes)) {
     throw new TypeError(`Expect type '${varTypName}'; ` + 
-      `got type '${rhs.a}'`);
+      `got type '${rhsTyp}'`);
   }
 
   if (s.init.tag === "string") {

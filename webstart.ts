@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       print_num: (arg : any) => {
         console.log("Logging from WASM: ", arg);
         display(String(arg));
-        // return arg;
+        return arg;
       },
       print_bool: (arg : any) => {
         if(arg === 0) { display("False"); }

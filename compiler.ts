@@ -21,16 +21,18 @@ function addIndent(s: string, indent: number = 0): string {
 
 function addBlockIndent(block: string[], indent: number = 0): string[] {
   return block.map(s => {
-    const newS = addIndent(s, indent);
     if (s.startsWith("(block") || s.startsWith("(func") || s.startsWith("(loop")) {
+      const newS = addIndent(s, indent);
       indent += 1;
+      return newS
     } else if(s.startsWith(")")) {
       indent -= 1
+      addIndent(s, indent);
     } 
     // else {
     //   indent += [...s.match(leftParen)].length - [...s.match(rightParen)].length;
     // }
-    return newS
+    return addIndent(s, indent);
   })
 }
 
@@ -319,23 +321,46 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         `(global.set $ForLoopCnt${forLabel} (i32.const 0))`,
         `(block`,
         `(loop`,
+        // `(global.get $ForLoopCnt${forLabel})`,
+        // `call $print_num`,
+        // `(global.get $ForLoopLen${ forLabel })`,
+        // `(i32.ge_s)`,
         `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
         `(br_if 1)`,
-        ...loadVal,
-        `(global.get $ForLoopCnt${forLabel})`,
-        `(i32.add (i32.const 1))`, 
-        `(i32.mul (i32.const 4))`,
-        `(i32.add (global.get $heap))`, 
+        `(global.get $ForLoopIter${forLabel})`,
+        `(i32.sub (global.get $ForLoopLen${forLabel}) (global.get $ForLoopCnt${forLabel}))`,
+        `(i32.const 1)`,
+        `(i32.sub)`,
+        `(call $get_${expr.iter.a.tag}_index)`,
+        loopVarUpdate,
         ...exprStmt, 
-        `(i32.store)`,
+        // `call $print_num`,
         `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
+        `call $print_num`,
         `(br 0)`,
         `)`,
         `)`,
+        // `call $print_num`,
+        `(global.set $ForLoopCnt${forLabel} (i32.const 0))`,
+        // `(block ;; assign`,
+        // `(loop`,
+        // `(i32.ge_s (global.get $ForLoopCnt${forLabel}) (global.get $ForLoopLen${forLabel}))`,
+        // `(br_if 1)`,
+        // `(local.set $scratch)`,
+        // `(global.get $ForLoopCnt${forLabel})`,
+        // `(i32.add (i32.const 1))`, 
+        // `(i32.mul (i32.const 4))`,
+        // `(i32.add (global.get $heap))`, 
+        // `(local.get $scratch)`,
+        // `(i32.store)`,
+        // `(global.set $ForLoopCnt${forLabel} (i32.add (global.get $ForLoopCnt${forLabel}) (i32.const 1)))`,
+        // `(br 0)`,
+        // `)`,
+        // `)`,
         `(global.get $heap)`,
-        `(i32.store (global.get $ForLoopCnt${forLabel}))`,
+        `(i32.store (global.get $ForLoopLen${forLabel}))`,
         `(global.get $heap) ;; return addr`,
-        `(global.get $ForLoopCnt${forLabel})`,
+        `(global.get $ForLoopLen${forLabel})`,
         `(i32.add (i32.const 1))`,
         `(i32.mul (i32.const 4))`,
         `(i32.add (global.get $heap))`, 
