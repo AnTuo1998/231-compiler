@@ -93,4 +93,70 @@
     (i32.add (local.get $addr))
     (i32.load)
   )
+
+
+
+  (func $eqstr (param i32) (param i32) (result i32)
+    (local $i i32)
+    (local $len i32)
+    (local.get 0)
+    (call $check_init)
+    (i32.load) ;; load the length of the str1
+    (local.set $len)
+    (local.get $len)
+    (local.get 1)
+    (call $check_init)
+    (i32.load) ;; load the length of the str2
+    (i32.ne)
+    (if
+      (then
+        (i32.const 0)
+        return
+      )
+    )
+    (local.set $i (i32.const 0)) 
+    (block
+      (loop 
+        (i32.ge_s (local.get $i) (local.get $len))
+        (br_if 1)
+        (local.get 0)
+        (i32.add (local.get $i) (i32.const 1))
+        (i32.add (i32.mul (i32.const 4)))
+        (i32.load)
+        (local.get 1)
+        (i32.add (local.get $i) (i32.const 1))
+        (i32.add (i32.mul (i32.const 4)))
+        (i32.load)
+        (i32.ne)
+        (if
+          (then
+            (i32.const 0)
+            return
+          )
+        )
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br 0)
+      )
+    )
+    (i32.const 1)
+    return
+  )
+
+  (func (export "$streq") (param i32) (param i32) (result i32)
+    (local.get 0)
+    (local.get 1)
+    (call $eqstr)
+    return
+  )
+
+  (func (export "$strneq") (param i32) (param i32) (result i32)
+    (i32.const 1)
+    (local.get 0)
+    (local.get 1)
+    (call $eqstr)
+    (i32.sub)
+    return
+  )
+
+
 )
