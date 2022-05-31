@@ -182,9 +182,32 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
         case "-": return ["(i32.const 0)", ...unaryStmts, "(i32.sub)"];
         case "not": return ["(i32.const 1)", ...unaryStmts, "(i32.sub)"];
       }
+    case "builtin": 
+      var valStmts = codeGenArgs(expr.args, locals, clsEnv);
+      var toCall = expr.name;
+      if (expr.name === "print") {
+        const arg = expr.args[0];
+        switch (arg.a.tag) {
+          case "bool": toCall = "print_bool"; break;
+          case "int": toCall = "print_num"; break;
+          case "none": toCall = "print_none"; break;
+          case "string": toCall = "print_string"; break;
+        }
+        if (arg.tag === "id" && locals.get(arg.name))
+          valStmts.push(`(i32.load)`);
+        
+      } else if (expr.name === "len") {
+        valStmts.push(
+          `(call $check_init)`,
+          `(i32.load)`
+        );
+        return valStmts;
+      }
+      valStmts.push(`(call $${toCall})`);
+      return valStmts;
     case "call":
       var valStmts = codeGenArgs(expr.args, locals, clsEnv);
-      let toCall = expr.name;
+      var toCall = expr.name;
       if (clsEnv.has(expr.name)) { // this is an object constructor
         const initstmts: Array<string> = [];
         const [clsdef, tableIdx] = clsEnv.get(expr.name);
@@ -221,23 +244,6 @@ export function codeGenExpr(expr: Expr<Type>, locals: Env, clsEnv: ClsEnv): Arra
           `(local.set $scratch)`
         );
         return [...initstmts, ...valStmts];
-      }
-      if (expr.name === "print") {
-        const arg = expr.args[0];
-        switch (arg.a.tag) {
-          case "bool": toCall = "print_bool"; break;
-          case "int": toCall = "print_num"; break;
-          case "none": toCall = "print_none"; break;
-          case "string": toCall = "print_string"; break;
-        }
-        if (arg.tag === "id" && locals.get(arg.name))
-          valStmts.push(`(i32.load)`);
-      } else if (expr.name === "len") {
-        valStmts.push(
-          `(call $check_init)`,
-          `(i32.load)`
-        );
-        return valStmts;
       }
       valStmts.push(`(call $${toCall})`);
       return valStmts;

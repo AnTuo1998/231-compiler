@@ -264,23 +264,40 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
     }
     case "id":
       return tcIdVar(e, variables, functions, classes);
-    case "call":{
-      let newArgs: Expr<Type>[] = [];
+    case "builtin":
+      var newArgs: Expr<Type>[] = e.args.map(arg => tcExpr(arg, variables, functions, classes));
       if (e.name === "print") {
-        if (e.args.length !== 1)
+        if (newArgs.length !== 1)
           throw new Error("print expects a single argument");
-        newArgs = [tcExpr(e.args[0], variables, functions, classes)];
         return { ...e, a: { tag: "none" }, args: newArgs };
       } else if (e.name === "len") {
-        if (e.args.length !== 1)
+        if (newArgs.length !== 1)
           throw new Error("len expects a single argument");
-        const newArgs = tcExpr(e.args[0], variables, functions, classes);
-        if (newArgs.a.tag !== "list" && newArgs.a.tag !== "string") {
+        if (newArgs[0].a.tag !== "list" && newArgs[0].a.tag !== "string") {
           // Chocopy do not type check this argument
-          throw new TypeError(`Cannot call len on type ${getTypeStr(newArgs.a)}`);
+          throw new TypeError(`Cannot call len on type ${getTypeStr(newArgs[0].a)}`);
         }
-        return { ...e, a: { tag: "int" }, args: [newArgs] };
+        return { ...e, a: { tag: "int" }, args: newArgs };
+      } else if (e.name === "abs") {
+        if (newArgs.length !== 1)
+          throw new Error("abs expects a single argument");
+        if (newArgs[0].a.tag !== "int") {
+          // Chocopy do not type check this argument
+          throw new TypeError(`Cannot call abs on type ${getTypeStr(newArgs[0].a)}`);
+        }
+        return { ...e, a: { tag: "int" }, args: newArgs };
+      } else if ( e.name === "max" || e.name === "min" || e.name === "pow") {
+        if (newArgs.length !== 2)
+          throw new Error("abs expects a single argument");
+        newArgs.forEach(na => {
+          if (na.a.tag !== "int") {
+            throw new TypeError(`Cannot call ${e.name} on type ${getTypeStr(na.a)}`);
+          }
+        });
+        return { ...e, a: { tag: "int" }, args: newArgs };
       }
+    case "call":{
+      var newArgs: Expr<Type>[] = [];
       var [found, cls] = classes.lookUpVar(e.name, SearchScope.GLOBAL);
       if (found) {
         if (cls.funs.has("__init__")) {
@@ -317,7 +334,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
         throw new Error(`There is no method named ${e.name} in class ${typStr}`);
       }
       const methodInfo = cls.funs.get(e.name);
-      let newArgs = tcArgs(e.args, methodInfo, variables, functions, classes, true);
+      var newArgs = tcArgs(e.args, methodInfo, variables, functions, classes, true);
       return { ...e, obj: newObj, args: newArgs, a: methodInfo.ret };
     case "index": 
       return tcIndexExpr(e, variables, functions, classes); 

@@ -1,7 +1,7 @@
 import { TreeCursor } from '@lezer/common';
 import { parser } from '@lezer/python';
 import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr, IdVar } from './ast';
-import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier } from './ast';
+import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier, builtinKeywords } from './ast';
 import { ParseError } from './error';
 import { assert } from "chai";
 
@@ -501,9 +501,11 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
         t.nextSibling(); // Focus ArgList
         // t.firstChild(); // Focus open paren
         var args = traverseArguments(t, s);
-        var result: Expr<any> = { tag: "call", name, args };
         t.parent();
-        return result;
+        if (builtinKeywords.has(name)) {
+          return { tag: "builtin", name, args };
+        }
+        return { tag: "call", name, args };
       }
       else if (node.type.name === "MemberExpression") {
         t.firstChild(); // VariableName

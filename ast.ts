@@ -71,6 +71,7 @@ export type Expr<A> =
   | { a?: A, tag: "binop", op: BinOp, lhs: Expr<A>, rhs: Expr<A> }
   | { a?: A, tag: "unop", op: UnOp, expr: Expr<A> }
   | { a?: A, tag: "call", name: string, args: Expr<A>[] }
+  | { a?: A, tag: "builtin", name: string, args: Expr<A>[] }
   | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[]}
   | { a?: A, tag: "array", eles: Expr<A>[] }
   | IndexExpr<A>
@@ -169,6 +170,10 @@ export const keywords = new Set<string>([
   "as", "assert", "async", "await", "break", "continue", "del", "finally", "from", "in",
   "is", "lambda", "not", "or", "pass", "raise", "with", "yield"
 ]);
+
+export const builtinKeywords = new Set<string>([
+  "print", "len", "abs", "min", "max", "pow"
+])
 
 const idReg = /^[a-zA-Z\_][0-9a-zA-Z_]*/;
 
