@@ -200,5 +200,43 @@ print(f(s, 3))
   print(a == "abc")
   print(a == a)
   print("jkl" == "jkm")
-  print("jkl" != "vbnmmgm")`, [`True`, `False`, `True`, `True`, `False`, `True`])
+  print("jkl" != "vbnmmgm")`, [`True`, `False`, `True`, `True`, `False`, `True`]);
+  // string comparation
+  assertPrint("string-literal-compare-1", `
+  a:str="qwerty"
+  b:str="qwerty"
+  print(a==b)`, ["True"]);
+  assertPrint("string-literal-compare-2", `
+  a:str="qwerty"
+  b:str="qwert"
+  print(a==b)`, ["False"]);
+  assertPrint("string-literal-compare-3", `
+  a:str=""
+  b:str=""
+  print(a==b)`, ["True"]);
+  assertPrint("string-literal-compare-4", `
+  a:str=""
+  b:str="qwerty"
+  print(a==b)`, ["False"]);
+  assertPrint("string-memvar-compare", `
+  class A(object):
+      a:str="qwerty"
+      def s(self:A)->str:
+          return self.a
+  b:str="qwerty"
+  c:A=None
+  c=A()
+  print(b==c.s())`, ["True"]);
+  assertPrint("list-str-compare", `
+  l:[str]=None
+  s:str="str"
+  l=["aaa", "bbb", "aaa"]
+  for s in l:
+      print(s=="aaa")
+  `, ["True", "False", "True"])
+  assertFail("none-list-str-compare", `
+  l:[str]=None
+  s:str="str"
+  for s in l:
+      print(s=="test")`);
 });
