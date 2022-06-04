@@ -184,7 +184,8 @@ export function tcLit(lit: Literal<any>): Literal<Type> {
 
 export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
   funcInfo: OneFun<Type>, variables: BodyEnv, functions: FunctionsEnv, classes: ClassEnv, 
-  fname:string, isMethod: boolean = false): Expr<Type>[] {
+  isMethod: boolean = false): Expr<Type>[] {
+  const fname = funcInfo.name;
   const selfArg: number = Number(isMethod);
   const ParamLen: number = funcInfo.params.length; // pos param, kw param, nonlocals
   const additionParamLen: number = funcInfo.nonlocal.length;
@@ -371,7 +372,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       if (found) {
         if (cls.funs.has("__init__")) {
           var initMethodInfo = cls.funs.get("__init__");
-          newArgs = tcArgs(e.args, e.kwargs, initMethodInfo, variables, functions, classes, "__init__", true);
+          newArgs = tcArgs(e.args, e.kwargs, initMethodInfo, variables, functions, classes, true);
           return { ...e, a: { tag: "object", class: e.name }, args: newArgs };
         } else {
           return { ...e, a: { tag: "object", class: e.name } };
@@ -384,7 +385,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
       if (!found) {
         throw new Error(`Not a function or class: ${e.name}`);
       }
-      newArgs = tcArgs(e.args, e.kwargs, funcInfo, variables, functions, classes, e.name);
+      newArgs = tcArgs(e.args, e.kwargs, funcInfo, variables, functions, classes);
       return { ...e, a: funcInfo.ret, name: funcInfo.name, args: newArgs };
     }
     case "getfield":
@@ -403,7 +404,7 @@ export function tcExpr(e: Expr<any>, variables: BodyEnv, functions: FunctionsEnv
         throw new Error(`There is no method named ${e.name} in class ${typStr}`);
       }
       const methodInfo = cls.funs.get(e.name);
-      var newArgs = tcArgs(e.args, e.kwargs, methodInfo, variables, functions, classes, e.name, true);
+      var newArgs = tcArgs(e.args, e.kwargs, methodInfo, variables, functions, classes, true);
       return { ...e, obj: newObj, args: newArgs, a: methodInfo.ret };
     case "index": 
       return tcIndexExpr(e, variables, functions, classes); 
@@ -692,7 +693,7 @@ export function tcFuncDef(f: FunDef<any>, variables: BodyEnv,
       }
       curFuncInfo.kwArgs.set(p.typedvar.name, p.value);
     }
-    variables.addDecl(p.typedvar.name, { typ: p.typedvar.typ })
+    variables.addDecl(p.typedvar.name, { typ: p.typedvar.typ });
   });
   f.body.decls.forEach(d => {
     if (d.nonlocal) {
