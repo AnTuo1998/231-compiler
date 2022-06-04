@@ -102,7 +102,7 @@ class OneFun<T> {
   ret: T;
   nonlocal: TypedVar[];
   kwArgs: Map<string, Expr<T>>
-  constructor(name: string, params: TypedVar[], ret: T, nonlocal: TypedVar[] = null, 
+  constructor(name: string, params: TypedVar[], ret: T, nonlocal: TypedVar[] = [], 
     kwArgs: Map<string, Expr<T>> = null) {
     this.name = name;
     this.params = params;
@@ -794,7 +794,7 @@ export function tcClsDef(c: ClsDef<any>, variables: BodyEnv,
         throw new Error(`Method overriden with different type signature: ${c.name}`);
       }
     }
-    functions.addDecl(m.name, new OneFun<Type>(m.name, m.params.map(p => p.typedvar), m.ret, []));
+    functions.addDecl(m.name, new OneFun<Type>(m.name, m.params.map(p => p.typedvar), m.ret));
     return tcFuncDef(m, variables, functions, classes, c.name + "$");
   }).flat();
 
@@ -906,7 +906,7 @@ export function tcProgram(p: Program<any>): Program<Type> {
   globalStrs.clear();
 
   p.fundefs.forEach(f => {
-    functions.addDecl(f.name, new OneFun<Type>(f.name, f.params.map(p => p.typedvar), f.ret, []));
+    functions.addDecl(f.name, new OneFun<Type>(f.name, f.params.map(p => p.typedvar), f.ret));
   }); // no redefinition error
   
   classes.addDecl("object", undefined);
