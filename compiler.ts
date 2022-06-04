@@ -460,21 +460,21 @@ export function codeGenFun(f: FunDef<Type>, locals: Env, clsEnv: ClsEnv, indent:
   const variables = variableNames(f.body.vardefs);
   f.body.vardefs.forEach(v => withParamsAndVariables.set(v.typedvar.name, v.typedvar.refed));
   f.params.forEach(p => {
-    let flag = p.ref ? p.ref : p.refed;
-    withParamsAndVariables.set(p.name, flag);
+    let flag = p.typedvar.ref ? p.typedvar.ref : p.typedvar.refed;
+    withParamsAndVariables.set(p.typedvar.name, flag);
   });
 
   // Construct the code for params and variable declarations in the body
-  let params = f.params.map(p => `(param $${p.name} i32)`).join(" ");
+  let params = f.params.map(p => `(param $${p.typedvar.name} i32)`).join(" ");
   const paramWrap = f.params.map(p => {
     const paramStmt = [];
-    if (!p.ref && p.refed) {
+    if (!p.typedvar.ref && p.typedvar.refed) {
       paramStmt.push(
         `(global.get $heap)`, 
-        `(local.get $${p.name})`, 
+        `(local.get $${p.typedvar.name})`, 
         `(i32.store)`,
-        `(global.get $heap) ;; addr of param ${p.name}`, 
-        `(local.set $${p.name})`,
+        `(global.get $heap) ;; addr of param ${p.typedvar.name}`, 
+        `(local.set $${p.typedvar.name})`,
         `(global.get $heap)`, 
         `(i32.add (i32.const 4))`,
         `(global.set $heap)`, 
