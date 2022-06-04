@@ -3,8 +3,6 @@ import { parser } from '@lezer/python';
 import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr, IdVar, Param } from './ast';
 import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier, builtinKeywords } from './ast';
 import { ParseError } from './error';
-import { assert } from "chai";
-
 
 function isDecl(t: TreeCursor, s: string) {
   if (t.type.name === "FunctionDefinition" || 
@@ -341,7 +339,7 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
     case "ForStatement": {
       const c:TreeCursor = t;
       t.firstChild(); // for
-      assert(t.node.type.name === "for");
+      // assert(t.node.type.name === "for");
       t.nextSibling();
       // const cnt = traverseExpr(t, s);
       if (c.name !== "VariableName")
@@ -351,7 +349,7 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
         name: s.substring(t.from, t.to)
       };
       t.nextSibling(); // in
-      assert(t.node.type.name === "in");
+      // assert(t.node.type.name === "in");
       t.nextSibling(); // array
       const array = traverseExpr(t, s);
       t.nextSibling(); // body

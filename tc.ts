@@ -189,6 +189,8 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
   const ParamLen: number = funcInfo.params.length; // pos param, kw param, nonlocals
   const additionParamLen: number = funcInfo.nonlocal.length;
   const realParamLen: number = ParamLen - additionParamLen; // pos param and kw param
+  const kwParanLen: number = funcInfo.kwArgs.size;
+  const posParamLen: number = realParamLen - kwParanLen;
   let realParams = funcInfo.params.slice(selfArg, realParamLen);
 
   const paramName = new Set<string>();
@@ -196,7 +198,7 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
   args = args.map(a => tcExpr(a, variables, functions, classes));
   kwargs.forEach((a, name) => {
     if (!paramName.has(name)) {
-      throw new TypeError(`got an unexpected keyword argument ${name}`);
+      throw new TypeError(`${fname}() got an unexpected keyword argument ${name}`);
     }
     const argtyp = tcExpr(a, variables, functions, classes);
     kwargs.set(name, argtyp);
@@ -209,7 +211,7 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
     const name = typedvar.name;
     const typ = typedvar.typ;
     let newArg: Expr<Type>;
-    if (argPtr < args.length){
+    if (argPtr < args.length) {
       if (kwargs.has(name)) {
         throw new Error(`${fname}() got multiple values for argument ${name}`)
       }
@@ -220,7 +222,7 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
     } else if (funcInfo.kwArgs.has(name)) {
       newArg = funcInfo.kwArgs.get(name);
     } else {
-      throw new TypeError(`${fname} missing required positional argument: ${name}`);
+      throw new TypeError(`${fname}() missing required positional argument: ${name}`);
     }
     if (!assignable(typ, newArg.a, classes)) {
       throw new TypeError(`Expected ${getTypeStr(typ)}; ` +
@@ -228,6 +230,12 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
     }
     newArgs.push(newArg);
   });
+
+  if (argPtr < args.length) {
+    // more args than expected
+    throw new TypeError(`${fname}() takes from ${posParamLen} ` + 
+      (kwParanLen ? `to ${realParamLen} `: ``) + `positional arguments but ${args.length} were given`)
+  }
 
   newArgs = newArgs.concat(funcInfo.nonlocal.map(nl => {
     return { a: nl.typ, tag: "id", name: nl.name };
