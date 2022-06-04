@@ -214,7 +214,7 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
     let newArg: Expr<Type>;
     if (argPtr < args.length) {
       if (kwargs.has(name)) {
-        throw new Error(`${fname}() got multiple values for argument ${name}`)
+        throw new TypeError(`${fname}() got multiple values for argument ${name}`)
       }
       newArg = args[argPtr];
       argPtr += 1;
