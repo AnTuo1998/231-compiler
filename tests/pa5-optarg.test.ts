@@ -6,9 +6,16 @@ describe("PA5 tests for optional arguments", () => {
 def f(i: int, j: int, x: int = 1, y: int = 1) -> int:
     return i + j + x + y
 print(f(1, 1))
+print(f(1, 1, 5))
+print(f(1, 1, 5, 6))
+print(f(i=1, j=1))
+print(f(j=1, i=1))
+print(f(i=1, j=1, x=5, y=6))
+print(f(y=6, j=1, i=1, x=5))
 print(f(1, 1, y=6))
 print(f(1, 1, x=5, y=6))
-print(f(1, 1, y=6, x=5))`, ['4', '9', '13', '13']);
+print(f(1, 1, y=6, x=5))`, ["4", "8", "13", "4", 
+"4", "13", "13", "9", "13", "13"]);
     
     assertFailContain("opt arg before positional arg", `
 def add(x:int = 1, y:int)->int:

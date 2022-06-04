@@ -2,6 +2,7 @@ import { compile, run } from '../compiler';
 import { expect } from 'chai';
 import 'mocha';
 import { addLibs, importObject } from './import-object.test';
+import { assertTC, assertTCFail } from './asserts.test';
 
 async function runTest(source: string) {
     let importObject = await addLibs();
@@ -351,17 +352,12 @@ f(y)
         } catch (error) {
             expect(error.name).to.equal("TypeError");
         }
-        try {
-            await runTest(`
+
+        assertTCFail("wrong arg numbers", `
 y:int = 1
 def f(x:int)->int:
     return x
-f(y, y)
-            `);
-            expect(true).to.equal(false);
-        } catch (error) {
-            expect(error.message).to.equal(`Expected 1 arguments; got 2`);
-        }
+f(y, y)`);
 
         try {
             await runTest(`
