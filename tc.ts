@@ -189,10 +189,10 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
   const selfArg: number = Number(isMethod);
   const ParamLen: number = funcInfo.params.length; // pos param, kw param, nonlocals
   const additionParamLen: number = funcInfo.nonlocal.length;
-  const realParamLen: number = ParamLen - additionParamLen; // pos param and kw param
+  const realParamLen: number = ParamLen - additionParamLen; 
   const kwParanLen: number = funcInfo.kwArgs.size;
   const posParamLen: number = realParamLen - kwParanLen;
-  let realParams = funcInfo.params.slice(selfArg, realParamLen);
+  let realParams = funcInfo.params.slice(selfArg, realParamLen); // pos param and kw param
 
   const paramName = new Set<string>();
   realParams.forEach(tv => paramName.add(tv.name));
@@ -235,7 +235,8 @@ export function tcArgs(args: Expr<any>[], kwargs: Map<string, Expr<any>>,
   if (argPtr < args.length) {
     // more args than expected
     throw new TypeError(`${fname}() takes from ${posParamLen} ` + 
-      (kwParanLen ? `to ${realParamLen} `: ``) + `positional arguments but ${args.length} were given`)
+      (kwParanLen ? `to ${realParamLen} `: ``) + 
+      `positional arguments but ${args.length} were given`)
   }
 
   newArgs = newArgs.concat(funcInfo.nonlocal.map(nl => {
