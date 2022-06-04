@@ -462,8 +462,7 @@ export function traverseParameters(t: TreeCursor, s: string, idSet: Set<any>): P
       const value = traverseExpr(t, s);
       t.nextSibling(); // Move on to comma or ")"
       parameters.push({ typedvar:{ name, typ }, value });
-    } 
-    else {
+    } else {
       if (hasOptArg) {
         throw new ParseError("non-default argument follows default argument");
       } 
@@ -606,7 +605,8 @@ export function traverseCondBody(t: TreeCursor, s: string): CondBody<any> {
   return { cond, body };
 }
 
-export function traverseArguments(t: TreeCursor, s: string): [Expr<any>[], Map<string, Expr<any>>] {
+export function traverseArguments(t: TreeCursor, s: string): 
+[Expr<any>[], Map<string, Expr<any>>] {
   // c is the subtree of the arglist
   const args = [];
   const kwargs = new Map<string, Expr<any>>();
@@ -619,12 +619,12 @@ export function traverseArguments(t: TreeCursor, s: string): [Expr<any>[], Map<s
     let arg = traverseExpr(t, s);
     const name = s.substring(t.from, t.to); // maybe a kwarg
     t.nextSibling(); // Focuses on either "," or ")" or AssignOp for kwarg
-    if (t.type.name === ")" || t.type.name === ",") { // maybe no args
+    if (t.type.name === ")" || t.type.name === ",") {
       if (haskwarg) {
         throw new ParseError("positional argument follows keyword argument");
       }
       args.push(arg);
-    } else if (t.type.name === "AssignOp") {
+    } else if (t.type.name === "AssignOp") { // kwarg
       haskwarg = true;
       t.nextSibling(); // Focuses on expression
       arg = traverseExpr(t, s);
@@ -633,7 +633,6 @@ export function traverseArguments(t: TreeCursor, s: string): [Expr<any>[], Map<s
     } else {
       throw new ParseError("Could not parse expr at " +
         t.from + " " + t.to + ": " + s.substring(t.from, t.to));
-
     }
   }
   t.parent(); // Pop to ArgList
