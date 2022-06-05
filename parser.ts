@@ -1,10 +1,8 @@
 import { TreeCursor } from '@lezer/common';
 import { parser } from '@lezer/python';
-import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr, IdVar } from './ast';
+import { TypedVar, Stmt, Expr, Type, isOp, isUnOp, CondBody, VarDef, MemberExpr, ScopeVar, IndexExpr, IdVar, Param } from './ast';
 import { FunDef, Program, Literal, LValue, ClsDef, isValidIdentifier, builtinKeywords } from './ast';
 import { ParseError } from './error';
-import { assert } from "chai";
-
 
 function isDecl(t: TreeCursor, s: string) {
   if (t.type.name === "FunctionDefinition" || 
@@ -341,7 +339,7 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
     case "ForStatement": {
       const c:TreeCursor = t;
       t.firstChild(); // for
-      assert(t.node.type.name === "for");
+      // assert(t.node.type.name === "for");
       t.nextSibling();
       // const cnt = traverseExpr(t, s);
       if (c.name !== "VariableName")
@@ -351,7 +349,7 @@ export function traverseStmt(t: TreeCursor, s: string): Stmt<any> {
         name: s.substring(t.from, t.to)
       };
       t.nextSibling(); // in
-      assert(t.node.type.name === "in");
+      // assert(t.node.type.name === "in");
       t.nextSibling(); // array
       const array = traverseExpr(t, s);
       t.nextSibling(); // body
@@ -432,9 +430,10 @@ export function traverseType(t: TreeCursor, s: string): Type {
   }
 }
 
-export function traverseParameters(t: TreeCursor, s: string, idSet: Set<any>): TypedVar[] {
+export function traverseParameters(t: TreeCursor, s: string, idSet: Set<any>): Param<any>[] {
   t.firstChild();  // Focuses on open paren
   const parameters = [];
+  let hasOptArg = false;
   t.nextSibling(); // Focuses on a VariableName
   while (t.type.name !== ")") {
     let name = s.substring(t.from, t.to);
@@ -456,7 +455,19 @@ export function traverseParameters(t: TreeCursor, s: string, idSet: Set<any>): T
     let typ = traverseType(t, s);
     t.parent();
     t.nextSibling(); // Move on to comma or ")"
-    parameters.push({ name, typ });
+    nextTagName = t.type.name;
+    if (nextTagName === "AssignOp"){
+      hasOptArg = true;
+      t.nextSibling(); // focus on the value part
+      const value = traverseExpr(t, s);
+      t.nextSibling(); // Move on to comma or ")"
+      parameters.push({ typedvar:{ name, typ }, value });
+    } else {
+      if (hasOptArg) {
+        throw new ParseError("non-default argument follows default argument");
+      } 
+      parameters.push( { typedvar:{ name, typ } } );
+    }
     t.nextSibling(); // Focuses on a VariableName
   }
   t.parent();       // Pop to ParamList
@@ -500,12 +511,12 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
         var name = s.substring(t.from, t.to);
         t.nextSibling(); // Focus ArgList
         // t.firstChild(); // Focus open paren
-        var args = traverseArguments(t, s);
+        var [args, kwargs] = traverseArguments(t, s);
         t.parent();
         if (builtinKeywords.has(name)) {
           return { tag: "builtin", name, args };
         }
-        return { tag: "call", name, args };
+        return { tag: "call", name, args, kwargs };
       }
       else if (node.type.name === "MemberExpression") {
         t.firstChild(); // VariableName
@@ -515,8 +526,8 @@ export function traverseExpr(t: TreeCursor, s: string): Expr<any> {
         var name = s.substring(t.from, t.to);
         t.parent();
         t.nextSibling(); // ArgList
-        var args = traverseArguments(t, s);
-        var result: Expr<any> = { tag: "method", obj, name, args };
+        var [args, kwargs] = traverseArguments(t, s);
+        var result: Expr<any> = { tag: "method", obj, name, args, kwargs };
         t.parent();
         return result;
       }
@@ -594,21 +605,39 @@ export function traverseCondBody(t: TreeCursor, s: string): CondBody<any> {
   return { cond, body };
 }
 
-export function traverseArguments(t: TreeCursor, s: string): Expr<any>[] {
+export function traverseArguments(t: TreeCursor, s: string): 
+[Expr<any>[], Map<string, Expr<any>>] {
   // c is the subtree of the arglist
   const args = [];
+  const kwargs = new Map<string, Expr<any>>();
+  let haskwarg = false;
   t.firstChild(); // Focuses on open paren
   while (t.nextSibling()) { // Focuses on a VariableName
     if (t.type.name === ")") { // maybe no args
       break;
     }
-    args.push(traverseExpr(t, s));
-    t.nextSibling(); // Focuses on either "," or ")"
-    if (t.type.name !== ")" && t.type.name !== ",") { // maybe no args
+    let arg = traverseExpr(t, s);
+    const name = s.substring(t.from, t.to); // maybe a kwarg
+    t.nextSibling(); // Focuses on either "," or ")" or AssignOp for kwarg
+    if (t.type.name === ")" || t.type.name === ",") {
+      if (haskwarg) {
+        throw new ParseError("positional argument follows keyword argument");
+      }
+      args.push(arg);
+    } else if (t.type.name === "AssignOp") { // kwarg
+      haskwarg = true;
+      if (kwargs.has(name)) {
+        throw new ParseError("keyword argument repeated");
+      }
+      t.nextSibling(); // Focuses on expression
+      arg = traverseExpr(t, s);
+      t.nextSibling(); // Focuses on either "," or ")"
+      kwargs.set(name, arg);
+    } else {
       throw new ParseError("Could not parse expr at " +
         t.from + " " + t.to + ": " + s.substring(t.from, t.to));
     }
   }
   t.parent(); // Pop to ArgList
-  return args;
+  return [args, kwargs];
 }

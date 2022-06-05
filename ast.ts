@@ -5,13 +5,16 @@ export type VarDef<A> =
   { typedvar: TypedVar, init: Literal<A> };
 
 export type FunDef<A> = 
-  { name: string, params?: TypedVar[], ret?: Type, body: FuncBody<A> }
+  { name: string, params?: Param<A>[], ret?: Type, body: FuncBody<A> }
 
 export type FuncBody<A> = 
   { vardefs: VarDef<A>[], fundefs?: FunDef<A>[], decls?: ScopeVar<A>[], stmts: Stmt<A>[] }
 
 export type TypedVar =
   | { name: string, typ: Type, ref?: boolean, refed?: boolean }
+
+export type Param<A> = 
+  | { typedvar: TypedVar, value?: Expr<A> }
 
 export type ScopeVar<A> = 
   | { a?:A, name: string, nonlocal: boolean };
@@ -70,9 +73,9 @@ export type Expr<A> =
   | { a?: A, tag: "literal", value: Literal<A> }
   | { a?: A, tag: "binop", op: BinOp, lhs: Expr<A>, rhs: Expr<A> }
   | { a?: A, tag: "unop", op: UnOp, expr: Expr<A> }
-  | { a?: A, tag: "call", name: string, args: Expr<A>[] }
+  | { a?: A, tag: "call", name: string, args: Expr<A>[], kwargs?: Map<string, Expr<A>> }
   | { a?: A, tag: "builtin", name: string, args: Expr<A>[] }
-  | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[]}
+  | { a?: A, tag: "method", obj: Expr<A>, name: string, args: Expr<A>[], kwargs?: Map<string, Expr<A>> }
   | { a?: A, tag: "array", eles: Expr<A>[] }
   | IndexExpr<A>
   | IdVar<A>

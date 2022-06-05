@@ -293,4 +293,36 @@ def g():
     a = a + 1
 print(f(96))
 `, [`100`]);
+
+
+    assertPrint("inheritance of class nested method", `
+class A(object):
+    def f(self: A, a: int) -> int:
+        def g(a: int) -> int:
+            return a * 2
+        return g(a)
+class B(A):
+    def f(self: B, a: int) -> int:
+        return a
+a: A = None
+a = B()
+print(a.f(4))
+    `, [`4`]);
+
+    assertPrint("inheritance of class nested method", `
+class A(object):
+    def f(self: A, a: int) -> int:
+        return a
+class B(A):
+    def f(self: B, a: int) -> int:
+        def g(a: int) -> int:
+            return a * 2
+        return g(a)
+
+a: A = None
+a = B()
+print(a.f(4))
+    `, [`8`]);
+
+
 });
