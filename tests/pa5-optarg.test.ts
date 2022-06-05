@@ -2,6 +2,14 @@ import { assertPrint, assertFail, assertTCFail, assertTC, assertFailContain } fr
 import { NUM, NONE, CLASS, STRING } from "./helpers.test"
 
 describe("PA5 tests for optional arguments", () => {
+    assertFailContain("opt arg before positional arg", `
+def add(x:int = 1, y:int)->int:
+    return x + y`, 'non-default argument');
+
+    assertTCFail("wrong init for positional arguments", `
+def add(x:int, y:int = True)->int:
+    return x + y`);
+
     assertPrint("optional args", `
 def f(i: int, j: int, x: int = 1, y: int = 1) -> int:
     return i + j + x + y
@@ -19,10 +27,6 @@ print(f(1, 1, y=6, x=5))`,
 ["4", "8", "13", "4", "4", 
 "4", "13", "13", "9", "13", "13"]);
     
-    assertFailContain("opt arg before positional arg", `
-def add(x:int = 1, y:int)->int:
-    return x + y`, 'non-default argument');
-
     assertFailContain("unexpected positional arguments", `
 def add(x:int, y:int = 1)->int:
     return x + y
@@ -48,14 +52,15 @@ def add(x:int, y:int = 1)->int:
     return x + y
 add(1, a=1)`);
 
-    assertTCFail("wrong init for positional arguments", `
-def add(x:int, y:int = True)->int:
-    return x + y`);
-
     assertTCFail("more positional arguments than needed", `
 def add(x:int, y:int = 3)->int:
     return x + y
 add(1,2,3)`);
+
+    assertFailContain("repeated keyword argument", `
+def f(i: int, j: int, x: int = 1, y: int = 1) -> int:
+    return i + j + x + y
+f(1, 1, x=5, x=5)`, `keyword argument repeated`);
 
     assertPrint("list optional argument", `
 def append(x:int, y:[int] = [])->[int]:

@@ -626,6 +626,9 @@ export function traverseArguments(t: TreeCursor, s: string):
       args.push(arg);
     } else if (t.type.name === "AssignOp") { // kwarg
       haskwarg = true;
+      if (kwargs.has(name)) {
+        throw new ParseError("keyword argument repeated");
+      }
       t.nextSibling(); // Focuses on expression
       arg = traverseExpr(t, s);
       t.nextSibling(); // Focuses on either "," or ")"
